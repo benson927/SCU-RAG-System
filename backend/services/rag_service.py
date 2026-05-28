@@ -1,6 +1,42 @@
 import os
 import json
 import jieba
+import subprocess
+import urllib.request
+import time
+
+def ensure_ollama_running():
+    """檢查本地 Ollama 服務是否啟動，若未啟動則嘗試在 macOS 上自動開啟它"""
+    ollama_url = "http://localhost:11434"
+    try:
+        # 嘗試在 1 秒內檢測 Ollama 服務是否正常
+        with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
+            if response.status == 200:
+                return True
+    except Exception:
+        # 服務未啟動，嘗試啟動
+        print("🤖 偵測到地端 Ollama 未啟動，嘗試自動開啟 Ollama 應用程式...")
+        try:
+            # 在 macOS 上使用 open -a 啟動應用程式
+            subprocess.Popen(["open", "-a", "Ollama"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # 輪詢等待，直到服務啟動（最多等待 15 秒）
+            for i in range(15):
+                time.sleep(1.0)
+                try:
+                    with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
+                        if response.status == 200:
+                            print("🎉 Ollama 服務已成功啟動！")
+                            return True
+                except Exception:
+                    continue
+            print("⚠️ Ollama 啟動時間較長，請稍後確認是否已在背景載入。")
+        except Exception as e:
+            print(f"❌ 無法自動啟動 Ollama: {e}。請手動開啟 Ollama 應用程式。")
+    return False
+
+# 在加載模組前自動確保 Ollama 正在運行
+ensure_ollama_running()
+
 from rank_bm25 import BM25Okapi
 from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
@@ -9,6 +45,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 DATA_DIR = "data"
 CHROMA_DIR = "chroma_db"
+
 
 # 確保 PDF 目錄存在
 if not os.path.exists(DATA_DIR):

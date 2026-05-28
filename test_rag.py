@@ -4,9 +4,13 @@ import requests
 
 # 確保 python 能定位到同目錄的 backend 模組
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+from backend.services.rag_service import ensure_ollama_running, query_rag
 
 def test_rag_pdf_retrieval():
     print("=== 測試: 地端 PDF 知識庫 RAG 檢索與 LLM 推論 ===")
+    
+    # 嘗試自動啟動 Ollama
+    ensure_ollama_running()
     
     # 檢查 Ollama 是否在運作
     ollama_url = "http://localhost:11434"
@@ -22,10 +26,10 @@ def test_rag_pdf_retrieval():
         return
         
     print("地端 Ollama 運作中，開始檢索本地 PDF 檔案...")
-    from backend.services.rag_service import query_rag
     
     # 測試提問
     query = "工讀時薪是多少？"
+
     print(f"問題: {query}")
     
     result = query_rag(user_query=query)
