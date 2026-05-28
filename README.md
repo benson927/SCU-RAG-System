@@ -1,97 +1,140 @@
-# 🎓 企業專屬知識庫 RAG 系統 (管資期末 - Benson組)
+# 🎓 SCU 法規規範智慧檢索系統 (管資期末 - Benson組)
 
-本專案是一個**純本地運作 (100% Offline)** 的「企業專屬知識庫 RAG (Retrieval-Augmented Generation) 系統」。我們運用了最新的開源地端大型語言模型 (LLM) 技術，確保所有內部文件與機密資料都不會外流到雲端（如 OpenAI、Gemini）。系統能自動讀取本地 PDF 檔案，將其向量化並儲存，在使用者提問時，精準檢索相關段落並交由 LLM 生成可靠、無幻覺的回答。
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.35%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Ollama](https://img.shields.io/badge/Ollama-Offline%20LLM-black)](https://ollama.com/)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20DB-orange)](https://www.trychroma.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-目前系統預載了多份東吳大學的法規與規範作為測試資料庫，以驗證系統的檢索能力與跨語言處理能力。
+本專案是一個為東吳大學法規與規範設計的 **地端安全 + 雲端加速雙模 RAG (Retrieval-Augmented Generation) 智慧檢索系統**。
 
----
-
-## 🌟 系統特色與技術架構
-
-### 核心技術棧
-*   **後端與 RAG 引擎**: Python (FastAPI + LangChain)
-*   **地端 LLM 引擎**: Ollama
-    *   推論模型：`gemma3`
-    *   嵌入模型 (Embedding)：`nomic-embed-text`
-*   **向量資料庫**: Chroma DB
-*   **前端介面**: React (進階 Web 介面) / Streamlit (快速展示版 MVP)
-
-### 主要亮點
-1.  **完全地端化安全防護**：模型與資料庫均在本地執行，完全無需 API 金鑰，確保企業資料絕對安全。
-2.  **多源 PDF 知識庫解析**：實作 `PyPDFDirectoryLoader` 與文字分割器，只要將 PDF 放入 `data/` 目錄，系統即會自動解析、切片並建立 Chroma 向量庫。
-3.  **嚴格防幻覺與出處標註**：精心設計的 LangChain 系統提示詞 (System Prompt) 強制模型「僅基於檢索到的文本回答」。每筆回覆均會清晰標註資料來源（檔名與頁數）。若找不到答案，系統會主動拒答，絕不胡亂編造。
-4.  **中英雙語及特定情境檢索支援**：不僅能精準回答中文查詢，還具備處理英文查詢（如 *Mental health leave*）的跨語言匹配能力。
+系統具備**嚴格防幻覺機制**，限制大語言模型只能根據您提供的法規 PDF 檔案內容進行回答，杜絕 AI 瞎編。每次回覆均會**嚴謹標註參考出處與檔名**，並提供**原文對照展開**功能，是兼顧個人隱私與檢索準確度的智慧檢索解決方案。
 
 ---
 
-## 🛠️ 開發環境與安裝步驟
+## 🌟 系統特色與亮點
 
-在開始之前，請先開啟終端機（Terminal），執行以下指令**切換至專案根目錄**：
+*   🎨 **Neobrutalism (新野獸主義) 視覺設計**：前端介面採用莫蘭迪色系與奶油黃背景，搭配粗邊框、硬陰影與手繪條紋裝飾，打破傳統網頁的呆板感。
+*   🔒 **地端安全隱私保障 (Ollama)**：預設使用純地端 `Ollama` + `Gemma 3` 運行，所有法規 PDF 與提問完全不出網，100% 保障資料隱私。
+*   ⚡ **雲端 API 雙模切換 (Gemini)**：側邊欄提供填寫 Gemini API 金鑰欄位。填入後可一鍵切換至 Google Gemini 雲端加速模式，免除地端推論時的卡頓，大幅提升回應速度（Chroma 向量庫依然在本地執行）。
+*   📚 **自動化向量資料庫建立**：只要將新的 PDF 檔案放進 `data/` 資料夾，RAG 引擎便會在初次運行時自動載入、切片、並將向量存入本地的 `chroma_db/` 資料庫。
+*   📋 **出處回溯與防幻覺**：在系統提示詞中施加強烈約束，若檢索資料中沒有答案，系統會禮貌拒答而非捏造事實。回覆下方會顯示手繪風格的「條文原文卡片」供交叉核對。
 
+---
+
+## 🏗️ 系統技術架構
+
+本系統採用經典的 **RAG (檢索增強生成)** 工作流：
+
+```mermaid
+graph TD
+    A[使用者輸入提問] --> B{是否提供 Gemini API Key?}
+    B -- 是 --> C[啟用 Gemini 雲端模型加速]
+    B -- 否 --> D[啟用 Ollama 本地 Gemma3 推論]
+    
+    A --> E[多查詢語意擴充 Query Expansion]
+    E --> F[Chroma 本地向量資料庫檢索]
+    F --> G[篩選與排序相關法規文本段落]
+    
+    C & D --> H[將提問與檢索段落放入 RAG 嚴格提示詞範本]
+    G --> H
+    H --> I[生成回答 + 標註法規出處檔名]
+    I --> J[於前端 UI 渲染回答與「法規參考條文原文卡片」]
+```
+
+---
+
+## 📂 專案目錄結構
+
+```text
+├── app.py                  # Streamlit 網頁主程式 (Neobrutalism UI 設計)
+├── requirements.txt         # 系統 Python 套件依賴清單
+├── test_rag.py              # RAG 整合端到端測試指令
+├── test_retrieval.py        # 檢索引擎與分詞翻譯單元測試指令
+│
+├── backend/                 # 後端模組資料夾
+│   ├── main.py              # 後端 API 主入口
+│   ├── requirements.txt     # 後端依賴
+│   └── services/
+│       ├── rag_service.py   # RAG 核心檢索與生成邏輯 (Chroma + Ollama/Gemini)
+│       └── title_mapping.json  # 檔案名稱與法規名稱對照表
+│
+├── chroma_db/               # 本地向量資料庫目錄 (儲存向量化後的法規數據)
+├── data/                    # 原始法規 PDF 存放處 (在此放入 PDF 以自動建檔)
+└── frontend/                # React + Vite 前端專案目錄 (備用進階 Web UI)
+```
+
+---
+
+## 🛠️ 安裝與開發環境部署
+
+請先開啟您的終端機 (Terminal)，切換至本專案的根目錄：
 ```bash
 cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
 ```
 
 ### 1. 安裝 Python 套件依賴
-請在專案目錄下執行以下指令安裝所需的依賴套件：
+建議使用 Python 3.10 以上版本，執行以下指令安裝所需套件：
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-### 2. 安裝與啟動地端 LLM (Ollama)
-因為本專案完全依賴地端模型，您必須安裝 Ollama 並下載指定模型：
-1. 請至 [Ollama 官網](https://ollama.com/) 下載並安裝 Ollama。
-2. 開啟終端機，下載所需的嵌入模型與語言模型：
+### 2. 安裝並運行地端大語言模型 (Ollama 模式)
+如果您想使用 100% 本地地端模式，請完成以下步驟：
+1. 前往 [Ollama 官方網站](https://ollama.com/) 下載並安裝適用於 Mac 的應用程式。
+2. 啟動 Ollama 軟體。
+3. 打開終端機，拉取專案所需的嵌入模型與生成模型：
    ```bash
+   # 下載向量嵌入模型
    ollama pull nomic-embed-text
+   
+   # 下載主推論語言模型
    ollama pull gemma3
    ```
-3. 確保 Ollama 應用程式正在背景執行 (預設佔用 `http://localhost:11434`)。
+4. 確保 Ollama 在背景持續運行 (預設埠口為 `http://localhost:11434`)。
 
-### 3. 準備知識庫資料
-確保在專案根目錄下有一個名為 `data/` 的資料夾，並將您希望作為知識庫的 PDF 檔案放入其中。系統在初次查詢時，會自動讀取並在 `chroma_db/` 建立向量資料庫。
+### 3. 配置 Gemini API 金鑰 (雲端加速模式)
+如果您嫌地端執行速度較慢，可以前往 [Google AI Studio](https://aistudio.google.com/) 免費申請 Gemini API Key。
+* 啟動系統後，在網頁左側的 **「⚙️ 系統配置」** 欄位中直接貼上您的金鑰，系統將自動開啟 API 加速推論！
 
 ---
 
-## 🚀 系統執行與測試指令
+## 🚀 啟動與測試
 
-### 方案 A：執行 RAG 系統整合測試
-我們提供了端到端的 RAG 整合測試腳本，能驗證 Ollama 連線、PDF 檢索以及 LLM 生成回答的完整流程：
-```bash
-python3 test_rag.py
-```
-*(執行成功後，您應能看到系統回覆工讀時薪相關資訊，並正確附上來源檔案名稱與頁數。)*
-
-### 方案 B：啟動 Streamlit 快速展示介面 (MVP)
-若您想快速體驗具有 UI 的基本檢索版本（基於本地 TF-IDF 的快速實作），可啟動舊版 Streamlit 應用程式：
+### 方案一：啟動 Streamlit 視覺化檢索介面
+這是最直覺的測試方式，能開啟精美的網頁介面對話：
 ```bash
 python3 -m streamlit run app.py
 ```
-*(啟動後瀏覽器會自動開啟 `http://localhost:8501`)*
+* 執行後，瀏覽器會自動開啟 [http://localhost:8501](http://localhost:8501)。
 
-### 方案 C：執行檢索功能單元測試
-我們內建了對原始檢索引擎（分詞、加權、中英翻譯與過濾機制）的驗證腳本：
+### 方案二：執行 RAG 整合測試腳本
+在終端機中直接模擬 RAG 檢索流程（包含 Ollama 喚醒、向量庫搜尋與模型生成）：
+```bash
+python3 test_rag.py
+```
+
+### 方案三：執行檢索單元測試
+測試分詞、Boosting 加權、中英跨語言語意增強是否能正常運作：
 ```bash
 python3 test_retrieval.py
 ```
-*(將自動驗證「本地中文檢索與 Boosting」、「中英跨語言語意增強」、「無匹配安全閥」以及「宿舍檢查隱私規則」四項核心功能。)*
 
 ---
 
-## 📂 預載的 15 筆測試法規對照 (MVP 版本資料)
-> 註：最新的 RAG 架構直接依賴 `data/` 目錄下的實體 PDF 檔案。
-- **【文件一】**：東吳大學學生會會費代收辦法
-- **【文件二】**：東吳大學碩、博士班優秀新生獎勵辦法
-- **【文件三】**：東吳大學學生獎懲委員會組織章程
-- **【文件四】**：東吳大學學生清寒急難救助金實施辦法
-- **【文件五】**：東吳大學獎助學金申請審核辦法
-- **【文件六】**：東吳大學獎助學金暨優秀學生甄選委員會組織章程
-- **【文件七】**：Soochow University Student Leave Regulations (學生請假規則)
-- **【文件八】**：東吳大學端木愷校長獎學金實施要點
-- **【文件九】**：東吳大學學生銷過實施辦法
-- **【文件十】**：東吳大學學生社團組織及活動辦法
-- **【文件十一】**：東吳大學校外學生宿舍輔導及管理辦法
-- **【文件十二】**：東吳大學學生工讀助學實施辦法
-- **【文件十三】**：東吳大學優秀應屆畢業生選拔及獎勵辦法
-- **【文件十四】**：東吳大學研究生獎助學金辦法
-- **【文件十五】**：東吳大學優良導師獎勵辦法
+## 📚 目前已載入之法規資料庫 (置於 `data/` 目錄)
+
+*   東吳大學學生會會費代收辦法
+*   東吳大學碩、博士班優秀新生獎勵辦法
+*   東吳大學學生獎懲委員會組織章程
+*   東吳大學學生清寒急難救助金實施辦法
+*   東吳大學獎助學金申請審核辦法
+*   東吳大學學生請假規則 (Soochow University Student Leave Regulations)
+*   東吳大學端木愷校長獎學金實施要點
+*   東吳大學學生銷過實施辦法
+*   東吳大學學生社團組織及活動辦法
+*   東吳大學校外學生宿舍輔導及管理辦法
+*   東吳大學學生工讀助學實施辦法
+*   東吳大學優秀應屆畢業生選拔及獎勵辦法
+*   東吳大學研究生獎助學金辦法
+*   東吳大學優良導師獎勵辦法
