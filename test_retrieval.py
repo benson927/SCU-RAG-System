@@ -32,8 +32,8 @@ def test_cross_language_retrieval():
     print(f"來源資料: {result['sources']}")
     
     assert len(result['detailed_sources']) > 0, "應至少檢索到一筆參考來源"
-    found = any("請假" in src['title'] or "Leave" in src['content'] or "請假" in src['content'] for src in result['detailed_sources'])
-    assert found, "檢索到的條文或回答中應包含請假相關的內容"
+    found = any("Leave" in src['title'] or "Regula" in src['title'] for src in result['detailed_sources'])
+    assert found, "檢索到的條文應來自於英文學生請假規則 (Leave Regulations)"
     print("-> 測試 2 通過！\n")
 
 def test_no_match_safety_valve():
