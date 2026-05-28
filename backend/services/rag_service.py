@@ -156,7 +156,7 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
         if api_key:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(model_name="gemini-1.5-flash")
+            model = genai.GenerativeModel(model_name="gemini-2.5-flash")
             response = model.generate_content(prompt, generation_config={"temperature": 0.2})
             text = response.text
         else:
@@ -320,7 +320,7 @@ def query_rag(user_query: str, api_key: str = None) -> dict:
                 {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
             ]
             model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
+                model_name="gemini-2.5-flash",
                 system_instruction=system_prompt.replace("{context}", context_text)
             )
             response = model.generate_content(
