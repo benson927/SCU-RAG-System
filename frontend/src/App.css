@@ -1,0 +1,605 @@
+/* ==============================================================================
+   日系手繪動漫/漫畫風格 (Manga & Sketchy Style) - Premium CSS
+   ============================================================================== */
+
+:root {
+  /* 漫畫風專用硬色調 */
+  --ink-black: #1e252b;
+  --paper-white: #ffffff;
+  --sky-blue: #74b9ff;
+  --sunset-pink: #ff9ff3;
+  --manga-yellow: #ffeaa7;
+  --mint-green: #55efc4;
+  --gray-sketch: #dfe6e9;
+  
+  /* 漸層背景：低飽和度淡雅日系手繪紙張風 */
+  --anime-sky: linear-gradient(135deg, #e8f1f5 0%, #f5eef0 50%, #faf6eb 100%);
+  
+  --sans: 'Noto Sans TC', 'Caveat', -apple-system, sans-serif;
+  --sketch-shadow: 5px 5px 0px var(--ink-black);
+  --sketch-shadow-hover: 7px 7px 0px var(--ink-black);
+  --sketch-shadow-active: 2px 2px 0px var(--ink-black);
+}
+
+body {
+  background: var(--anime-sky);
+  color: var(--ink-black);
+  margin: 0;
+  font-family: var(--sans);
+  overflow: hidden;
+  position: relative;
+}
+
+/* 繪製網點/格子紋理，營造漫畫印刷感 */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -2;
+  background-image: radial-gradient(var(--ink-black) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+/* 隱藏原本的霓虹光球 */
+.aurora-bg {
+  display: none;
+}
+
+/* App 主容器 */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  box-sizing: border-box;
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 1.2rem;
+  position: relative;
+}
+
+/* 頂部導航欄 - 手繪招牌貼紙風 */
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1.5rem;
+  background: var(--paper-white);
+  border: 3.5px solid var(--ink-black);
+  /* 利用不對稱 border-radius 模擬歪扭手繪感 */
+  border-radius: 255px 15px 225px 15px/15px 225px 15px 255px;
+  margin-bottom: 1.2rem;
+  box-shadow: var(--sketch-shadow);
+  transform: rotate(-0.5deg);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.logo-emoji {
+  font-size: 2rem;
+  animation: logo-wiggle 3s infinite ease-in-out;
+}
+
+@keyframes logo-wiggle {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(10deg) scale(1.1); }
+}
+
+.header-left h1 {
+  font-size: 1.6rem;
+  font-weight: 900;
+  margin: 0;
+  color: var(--ink-black);
+  text-shadow: 2px 2px 0px var(--manga-yellow);
+}
+
+.highlight {
+  color: #eb4d4b;
+  text-decoration: underline wavy var(--ink-black) 2px;
+}
+
+.subtitle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  background: var(--manga-yellow);
+  color: var(--ink-black);
+  padding: 0.2rem 0.6rem;
+  border-radius: 30px 10px 40px 10px/10px 30px 10px 40px;
+  border: 2px solid var(--ink-black);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+/* 狀態徽章 - 漫畫風格布貼紙 */
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  padding: 0.4rem 0.8rem;
+  border: 2.5px solid var(--ink-black);
+  border-radius: 12px;
+  background: var(--paper-white);
+  box-shadow: 3px 3px 0px var(--ink-black);
+}
+
+.status-badge .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-black);
+}
+
+.status-badge.checking .dot { background-color: #f1c40f; }
+.status-badge.online .dot { background-color: var(--mint-green); }
+.status-badge.offline .dot { background-color: #ff7675; }
+
+/* 重試按鈕 - 手寫風 */
+.retry-btn {
+  background: var(--sky-blue);
+  border: 2.5px solid var(--ink-black);
+  color: var(--ink-black);
+  font-weight: 800;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px var(--ink-black);
+  transition: all 0.1s;
+}
+
+.retry-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px var(--ink-black);
+}
+
+.retry-btn:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px var(--ink-black);
+}
+
+/* 主體 Layout */
+.main-layout {
+  display: flex;
+  flex: 1;
+  gap: 1.2rem;
+  height: calc(100vh - 120px);
+  overflow: hidden;
+}
+
+/* 側邊欄 - 手繪筆記本風格 */
+.sidebar {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sidebar-card {
+  background: var(--paper-white);
+  border: 3px solid var(--ink-black);
+  border-radius: 16px 12px 14px 15px / 12px 14px 13px 15px;
+  padding: 1.2rem;
+  box-shadow: var(--sketch-shadow);
+  position: relative;
+}
+
+/* 側邊欄頂部加一條紅線，模擬橫線筆記本 */
+.sidebar-card::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: #ff7675;
+  opacity: 0.4;
+}
+
+.sidebar-card h3 {
+  font-size: 1.1rem;
+  font-weight: 900;
+  margin-top: 0.4rem;
+  margin-bottom: 0.8rem;
+  color: var(--ink-black);
+  border-bottom: 2px dashed var(--ink-black);
+  padding-bottom: 0.2rem;
+}
+
+.sidebar-card p {
+  font-size: 0.88rem;
+  color: #4b5563;
+  line-height: 1.6;
+}
+
+.info-card {
+  background: var(--manga-yellow);
+}
+
+/* 手繪步驟清單 */
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+}
+
+.step-item {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+
+.step-num {
+  background: var(--ink-black);
+  color: var(--paper-white);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 900;
+  flex-shrink: 0;
+}
+
+.step-item div {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-item div strong {
+  color: var(--ink-black);
+  font-weight: 800;
+}
+
+.step-item div span {
+  color: #6b7280;
+  font-size: 0.78rem;
+}
+
+.step-item code {
+  background: var(--gray-sketch);
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--ink-black);
+  font-family: monospace;
+}
+
+.clear-history-btn {
+  margin-top: auto;
+  background: #ff7675;
+  border: 3px solid var(--ink-black);
+  color: var(--ink-black);
+  padding: 0.8rem;
+  border-radius: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: var(--sketch-shadow);
+  transition: all 0.1s;
+}
+
+.clear-history-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--sketch-shadow-hover);
+}
+
+.clear-history-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--sketch-shadow-active);
+}
+
+/* 聊天區域 - 漫畫框 */
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-white);
+  border: 3.5px solid var(--ink-black);
+  border-radius: 20px 18px 22px 19px / 18px 20px 19px 22px;
+  box-shadow: var(--sketch-shadow);
+  overflow: hidden;
+  position: relative;
+}
+
+.chat-messages {
+  flex: 1;
+  padding: 1.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* 對話氣泡結構 - 漫畫對話框樣式 */
+.message-wrapper {
+  display: flex;
+  gap: 1.2rem;
+  max-width: 80%;
+  position: relative;
+}
+
+.message-wrapper.user {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message-wrapper.assistant {
+  align-self: flex-start;
+}
+
+/* 漫畫風大頭貼 */
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--manga-yellow);
+  border: 3px solid var(--ink-black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  box-shadow: 2px 2px 0px var(--ink-black);
+}
+
+.message-wrapper.user .avatar {
+  background: var(--sunset-pink);
+}
+
+/* 對話氣泡：帶有手繪粗框與漫畫小對話尖角 */
+.message-bubble {
+  background: var(--paper-white);
+  border: 3px solid var(--ink-black);
+  padding: 1rem 1.2rem;
+  border-radius: 16px;
+  line-height: 1.6;
+  font-size: 0.95rem;
+  box-shadow: 4px 4px 0px rgba(30, 37, 43, 0.15);
+  position: relative;
+}
+
+/* 使用者（右側）對話泡泡背景 */
+.message-wrapper.user .message-bubble {
+  background: #e3f2fd; /* 淺藍日系漫畫感 */
+  border-radius: 16px 0px 16px 16px / 16px 0px 16px 16px; /* 右上角尖銳 */
+}
+
+/* 助手（左側）對話泡泡背景 */
+.message-wrapper.assistant .message-bubble {
+  background: var(--paper-white);
+  border-radius: 0px 16px 16px 16px / 0px 16px 16px 16px; /* 左上角尖銳 */
+}
+
+/* 漫畫對話框的小三角形尾巴 */
+.message-bubble::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  z-index: 1;
+}
+
+/* 助手小尾巴 */
+.message-wrapper.assistant .message-bubble::before {
+  left: -15px;
+  border-width: 0 15px 15px 0;
+  border-color: transparent var(--ink-black) transparent transparent;
+}
+
+.message-wrapper.assistant .message-bubble::after {
+  content: "";
+  position: absolute;
+  top: 0px;
+  left: -10px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 12px 12px 0;
+  border-color: transparent var(--paper-white) transparent transparent;
+  z-index: 2;
+}
+
+/* 使用者小尾巴 */
+.message-wrapper.user .message-bubble::before {
+  right: -15px;
+  border-width: 0 0 15px 15px;
+  border-color: transparent transparent transparent var(--ink-black);
+}
+
+.message-wrapper.user .message-bubble::after {
+  content: "";
+  position: absolute;
+  top: 0px;
+  right: -10px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 12px 12px;
+  border-color: transparent transparent transparent #e3f2fd;
+  z-index: 2;
+}
+
+.message-content p {
+  margin: 0 0 0.5rem 0;
+  font-weight: 700; /* 加粗字體，模擬手繪漫畫印刷字 */
+}
+
+.message-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* 參考來源 - 剪貼簿貼紙風格 */
+.sources-section {
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 2px dashed var(--ink-black);
+}
+
+.sources-title {
+  font-size: 0.8rem;
+  font-weight: 900;
+  color: #eb4d4b;
+  margin-bottom: 0.4rem;
+}
+
+.sources-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.source-tag {
+  background: var(--manga-yellow);
+  border: 2px solid var(--ink-black);
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: var(--ink-black);
+  box-shadow: 2px 2px 0px var(--ink-black);
+  transform: rotate(-1deg);
+}
+
+.source-tag:nth-child(even) {
+  background: var(--sunset-pink);
+  transform: rotate(1deg);
+}
+
+/* 輸入框控制區 - 手繪邊緣 */
+.chat-input-area {
+  display: flex;
+  padding: 1rem 1.5rem;
+  gap: 0.8rem;
+  border-top: 3.5px solid var(--ink-black);
+  background: #fbfbfc;
+}
+
+.chat-input-area input {
+  flex: 1;
+  background: var(--paper-white);
+  border: 3px solid var(--ink-black);
+  color: var(--ink-black);
+  padding: 0.8rem 1.2rem;
+  border-radius: 12px 10px 14px 9px / 9px 12px 10px 13px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  outline: none;
+  box-shadow: inset 2px 2px 0px rgba(0,0,0,0.1);
+}
+
+.chat-input-area input:focus {
+  background: #fffdf5; /* 輕微變黃 */
+  border-color: var(--sky-blue);
+  box-shadow: inset 2px 2px 0px rgba(0,0,0,0.1), 3px 3px 0px var(--ink-black);
+}
+
+.chat-input-area input:disabled {
+  background: var(--gray-sketch);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* 發送按鈕 - 經典漫畫爆裂框貼紙 */
+.send-btn {
+  background: var(--sunset-pink);
+  border: 3px solid var(--ink-black);
+  color: var(--ink-black);
+  padding: 0 1.5rem;
+  border-radius: 14px 10px 12px 13px / 10px 14px 11px 12px;
+  font-weight: 900;
+  font-size: 0.95rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: var(--sketch-shadow);
+  transition: all 0.1s;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #ff79c6;
+  transform: translate(-2px, -2px);
+  box-shadow: var(--sketch-shadow-hover);
+}
+
+.send-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: var(--sketch-shadow-active);
+}
+
+.send-btn:disabled {
+  background: var(--gray-sketch);
+  border-color: #b2bec3;
+  color: #636e72;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* 思考中載入動畫 (漫畫三點效果) */
+.typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 17px;
+  margin-right: 8px;
+}
+
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background-color: var(--ink-black);
+  border: 1.5px solid var(--ink-black);
+  border-radius: 50%;
+  animation: bounce 1.2s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+.loading-text {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--ink-black);
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px) scale(1.1); }
+}
+
+/* 捲軸漫畫風 */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gray-sketch);
+  border-left: 2px solid var(--ink-black);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--manga-yellow);
+  border: 2px solid var(--ink-black);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sunset-pink);
+}
