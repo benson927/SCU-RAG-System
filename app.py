@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import sys
+import base64
 
 # 嘗試載入本機 .env 檔案中的環境變數 (避免引入額外依賴套件)
 if os.path.exists(".env"):
@@ -11,6 +12,16 @@ if os.path.exists(".env"):
                     k, v = line.strip().split("=", 1)
                     val = v.strip().strip("'").strip('"')
                     os.environ[k.strip()] = val
+    except Exception:
+        pass
+
+# 讀取怪獸圖片並轉為 Base64 以供 HTML 渲染
+monster_base64 = ""
+monster_path = os.path.join(os.path.dirname(__file__), "images", "doodle_monster.png")
+if os.path.exists(monster_path):
+    try:
+        with open(monster_path, "rb") as image_file:
+            monster_base64 = base64.b64encode(image_file.read()).decode('utf-8')
     except Exception:
         pass
 
@@ -50,7 +61,7 @@ html, body, [class*="css"], .stApp {
     border: 3px solid #2b2b2b !important;
     border-radius: 24px !important;
     color: #2b2b2b !important;
-    padding: 2.2rem 2.2rem !important;
+    padding: 2.2rem 14rem 2.2rem 2.2rem !important; /* 右側保留 14rem 空間放置小怪獸 */
     margin-bottom: 2rem !important;
     box-shadow: 7px 7px 0px #2b2b2b !important; /* 經典硬陰影 */
     position: relative;
@@ -282,6 +293,37 @@ html, body, [class*="css"], .stApp {
     padding: 0 5px !important;
     border-radius: 4px !important;
 }
+
+/* 頂部精美小怪獸樣式 - 新野獸主義紙片貼紙風格 */
+.header-monster {
+    position: absolute;
+    right: 25px;
+    top: 50%;
+    transform: translateY(-50%) rotate(2deg); /* 微微傾斜，增強手繪感 */
+    width: 145px;
+    height: 145px;
+    border: 3px solid #2b2b2b !important;
+    border-radius: 20px !important;
+    box-shadow: 5px 5px 0px #2b2b2b !important;
+    background-color: #ffffff !important;
+    padding: 6px;
+    z-index: 10;
+    transition: all 0.2s ease-in-out;
+}
+.header-monster:hover {
+    transform: translateY(-50%) rotate(-2deg) scale(1.05); /* 懸停微動效果 */
+    box-shadow: 7px 7px 0px #2b2b2b !important;
+}
+
+/* 響應式：在小螢幕上隱藏小怪獸，防擠壓 */
+@media (max-width: 768px) {
+    .header-monster {
+        display: none;
+    }
+    .header-card {
+        padding: 2.2rem 2.2rem !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -412,9 +454,10 @@ with st.sidebar:
         """)
 
 # 6. 主頁面 Render
-st.markdown("""
+st.markdown(f"""
 <div class="header-card">
     <div class="header-badge">⚡ 100% LOCAL SECURED & NO HALLUCINATION ⚖️</div>
+    <img src="data:image/png;base64,{monster_base64}" class="header-monster" />
     <h1 class="header-title">東吳規章 <span class="highlight-text">智慧領航員</span> ✏️</h1>
     <p class="header-subtitle">
         我們重新定義了校園法規的檢索體驗。透過 <span style="background-color:#c8f7dc; padding:2px 6px; border-radius:6px; border:2px solid #2b2b2b; font-weight:800; box-shadow:2px 2px 0px #2b2b2b;">無網本地運作</span> 捍衛隱私，以及 <span style="background-color:#ffd8a8; padding:2px 6px; border-radius:6px; border:2px solid #2b2b2b; font-weight:800; box-shadow:2px 2px 0px #2b2b2b;">條文原文秒級對照</span> 阻絕幻覺。在這裡，規章不再是冷冰冰的條文，而是有憑有據的即時智慧。
