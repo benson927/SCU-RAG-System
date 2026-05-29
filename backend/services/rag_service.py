@@ -279,7 +279,12 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
     # 這裡採用旁路機制：非請假問題不需英文，直接跳過擴充；請假問題使用靜態規則詞庫擴充，耗時 0 毫秒！
     if not api_key:
         if is_leave_query:
-            queries.extend(["student leave regulations", "leave of absence", "absent from class"])
+            # 針對請假規則，進行靜態跨語言檢索詞補強，區分一般請假與考試請假
+            is_exam_query = any(k in user_query for k in ["考", "exam", "test", "midterm", "final"])
+            if is_exam_query:
+                queries.extend(["examination leave regulations", "final exam leave of absence", "makeup exam request"])
+            else:
+                queries.extend(["student leave regulations", "leave of absence", "absent from class"])
             return queries[:4]
         else:
             return queries
@@ -354,7 +359,13 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
         
     # 2. 進行查詢擴展
     if disable_expansion:
-        queries = [user_query]
+        # 【加速模式特例優化】即使開啟了加速模式，如果是需要跨語檢索的請假問題，也必須進行基本雙語擴展，否則無法檢索英文 PDF。
+        # 由於地端擴充已採用零延遲旁路詞庫，此處強制保留請假問題的擴展。
+        is_leave_query = any(k in user_query.lower() for k in ["假", "leave", "absent", "vacation", "sick"])
+        if is_leave_query:
+            queries = generate_expanded_queries(user_query, api_key)
+        else:
+            queries = [user_query]
     else:
         queries = generate_expanded_queries(user_query, api_key)
     
@@ -522,7 +533,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
         "2. **【找不到時的特殊處理】**：只有當 Context 內容與問題完全無關，且完全找不到任何相關法規規定時，你才能在你的整個回答中「僅輸出」這一句話：「抱歉，在現有的企業知識庫中找不到與您問題相關的解答」，不准附帶任何其他字句。如果已經找到了部分資訊並做出了解答，則「絕對不准」在回答中提及任何找不到的抱歉字眼。\n"
         "3. 所有的回覆與說明必須使用中文。\n"
         "4. 答案必須精準，不可有胡亂編造或推論過度的情況，並在回答中提及你的參考資料來源（檔名與頁數）。\n"
-        "5. 【簡短關鍵字特別處理】：如果使用者輸入的是簡短的關鍵字或名詞（例如「繁星」、「時薪」等），而非完整問題，請將 Context 中所有提及該關鍵字的法規規定、獎勵、標準等內容整理並詳細列出，不可以說找不到。\n"
+        "5. 【簡短關鍵字特別處理】：如果使用者輸入的是簡短的關鍵字或名詞（例如「繁星」、「時薪」等），且 Context 中有提及該關鍵字或相關規定，請將其整理並詳細列出。若 Context 中完全沒有提及該關鍵字，則仍依第 2 條規則回答找不到，不可胡亂編造或直接複述問題。\n"
         "6. 【排版要求】：請使用 Markdown 格式讓答案更易讀。請適當地使用條列式（Bullet points）、針對關鍵數字或重點項目使用**粗體**，並且適當分段。\n"
         "7. 【名詞對照提示】：如果檢索到的 Context 為英文，當翻譯為中文時，請使用台灣大專院校的慣用語。例如：將 「Academic Affairs Office」 翻譯為 「教務處」，將 「Student Affairs Office」 翻譯為 「學務處」，將 「department chair」 翻譯為 「學系主任」。\n"
         "8. 【跨語言強制閱讀規定】：Context 中的法規原文可能為英文。即使如此，你仍必須仔細閱讀並理解英文語意，再以中文回答。**絕對禁止**因 Context 是英文就判斷「找不到相關資料」，這是嚴重的系統錯誤。英文法規與中文問題之間存在語意對應，你必須進行跨語言理解與對照作答。\n"
