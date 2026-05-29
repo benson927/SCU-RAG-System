@@ -357,16 +357,16 @@ with st.sidebar:
     )
     st.session_state.disable_expansion = disable_expansion
 
-    # 🦉 強制純地端模式 toggle
+    # 🦉 純地端模式 toggle
     force_local = st.toggle(
-        "🦉 強制純地端模式",
+        "🦉 純地端模式",
         value=st.session_state.get("force_local", False),
-        help="啟用後將強制忽略 Gemini API 金鑰，完全使用本地運行的 Ollama 與 Gemma3 模型進行推論與生成，確保所有數據均在本地端安全處理。"
+        help="啟用後將忽略 Gemini API 金鑰，完全使用本地運行的 Ollama 與 Gemma3 模型進行推論與生成，確保所有數據均在本地端安全處理。"
     )
     st.session_state.force_local = force_local
 
     if force_local:
-        st.info("🦉 系統配置：強制純地端 Ollama 模式")
+        st.info("🦉 系統配置：純地端 Ollama 模式")
     elif gemini_key:
         st.success("⚡ 系統配置：API 加速模式 (Chroma 依然本機執行)")
     else:
@@ -453,7 +453,7 @@ if query := st.chat_input("請輸入您想查詢的法規關鍵字或問題... (
     st.session_state.messages.append({"role": "user", "content": query})
     
     # 進行 RAG 檢索與回答生成 (串流模式)
-    # 若開啟強制純地端模式，則強制將 api_key 設為 None，忽略 Gemini 雲端 API
+    # 若開啟純地端模式，則將 api_key 設為 None，忽略 Gemini 雲端 API
     if st.session_state.get("force_local", False):
         api_key = None
     else:
