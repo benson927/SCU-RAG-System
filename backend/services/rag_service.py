@@ -63,6 +63,26 @@ _TOPIC_SOURCE_MAP = [
      "57eecfa622cfb319332789.pdf"),   # 東吳大學學生清寒急難救助金實施辦法
     ({"社團", "社員", "幹部", "社長"},
      "6228687cc02e7827840235.pdf"),   # 東吳大學學生社團組織及活動辦法
+    ({"優秀應屆畢業生", "應屆", "畢業生選拔", "畢業生獎勵", "優秀畢業生"},
+     "622864552d50a726687045.pdf"),   # 東吳大學優秀應屆畢業生選拔及獎勵辦法
+    ({"甄選委員會", "章程", "委員會組織"},
+     "57eecfa6815c1014215900.pdf"),   # 東吳大學獎助學金暨優秀學生甄選委員會組織章程
+    ({"研究生", "研究生獎助學金"},
+     "62286375884a8258956750.pdf"),   # 東吳大學研究生獎助學金辦法
+    ({"碩士班新生", "博士班新生", "優秀新生", "新生獎勵"},
+     "57eecfa5a8501458168219.pdf"),   # 東吳大學碩、博士班優秀新生獎勵辦法
+    ({"銷過", "改過", "銷過實施"},
+     "6228681d46e33141989956.pdf"),   # 東吳大學學生銷過實施辦法
+    ({"會費", "學生會費", "代收會費"},
+     "5b026ccaedc98902818150.pdf"),   # 東吳大學學生會會費代收辦法
+    ({"端木愷", "端木愷獎學金"},
+     "6926c31472b20396768425.pdf"),   # 東吳大學端木愷校長獎學金實施要點
+    ({"獎懲委員會", "記過", "申訴", "懲處"},
+     "57eecfa73a072014328000.pdf"),   # 東吳大學學生獎懲委員會組織章程
+    ({"獎助學金申請", "審核辦法"},
+     "57eecfa655a1a394937917.pdf"),   # 東吳大學獎助學金申請審核辦法
+    ({"導師", "優良導師", "熱心導師", "績優導師"},
+     "6228677210909078349219.pdf"),   # 東吳大學優良導師獎勵辦法
 ]
 
 def _detect_priority_source(query: str) -> str:
@@ -254,6 +274,16 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
     # 判斷是否為請假/缺席相關的問題，若是才啟用中英雙語擴展
     is_leave_query = any(k in user_query.lower() for k in ["假", "leave", "absent", "vacation", "sick"])
     
+    # 【地端零延遲雙語擴展優化】
+    # 若為純地端模式且沒有 API 金鑰，呼叫本地 LLM 做擴展會耗費 3~5 秒。
+    # 這裡採用旁路機制：非請假問題不需英文，直接跳過擴充；請假問題使用靜態規則詞庫擴充，耗時 0 毫秒！
+    if not api_key:
+        if is_leave_query:
+            queries.extend(["student leave regulations", "leave of absence", "absent from class"])
+            return queries[:4]
+        else:
+            return queries
+            
     if is_leave_query:
         prompt = (
             f"請將使用者的搜尋詞「{user_query}」進行擴展，生成 3 個適合法規與文件檢索的搜尋句。\n"
@@ -271,16 +301,11 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
         )
     
     try:
-        if api_key:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(model_name="gemini-2.5-flash")
-            response = model.generate_content(prompt, generation_config={"temperature": 0.2})
-            text = response.text
-        else:
-            from langchain_core.messages import HumanMessage
-            response = llm.invoke([HumanMessage(content=prompt)])
-            text = response.content
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name="gemini-2.5-flash")
+        response = model.generate_content(prompt, generation_config={"temperature": 0.2})
+        text = response.text
             
         lines = [line.strip() for line in text.split("\n") if line.strip()]
         for line in lines:
