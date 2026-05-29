@@ -414,37 +414,21 @@ with st.sidebar:
     else:
         st.info("🦉 系統配置：純地端 Ollama 模式")
 
-    # 📊 專案簡報
-    st.markdown("---")
-    st.markdown("### 📊 專案簡報")
-    pdf_path = "assets/MIS_Project_Benson_1.pdf"
-    if os.path.exists(pdf_path):
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🖥️ 開啟簡報", use_container_width=True, help="直接在本機彈出 PDF 閱讀器開啟此簡報檔案"):
-                try:
-                    import subprocess
-                    if os.name == 'posix': # macOS/Linux
-                        subprocess.Popen(["open", pdf_path])
-                    elif os.name == 'nt': # Windows
-                        os.startfile(pdf_path)
-                    st.toast("🎉 已嘗試在本機開啟簡報！")
-                except Exception as e:
-                    st.error(f"無法開啟: {e}")
-        with col2:
-            with open(pdf_path, "rb") as f:
-                st.download_button(
-                    label="📥 下載 PDF",
-                    data=f,
-                    file_name="MIS_Project_Benson_1.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-    else:
-        st.info("⚠️ 簡報檔案準備中...")
 
     # 移入清除歷史對話按鈕，Neobrutalism 風格化
     st.markdown("---")
+    st.markdown("""
+    <a href="/app/static/MIS_Project_Benson_Sure.pdf" target="_blank" style="text-decoration: none;">
+        <div style="text-align: center; border: 2.5px solid #2b2b2b; box-shadow: 3.5px 3.5px 0px #2b2b2b;
+                    background-color: #ffe3e3; border-radius: 12px; color: #2b2b2b; font-weight: 700;
+                    padding: 0.5rem 1rem; margin-bottom: 0.8rem;
+                    font-family: 'Outfit', 'Noto Sans TC', sans-serif; cursor: pointer;"
+             onmouseover="this.style.transform='translate(-2px,-2px)'; this.style.boxShadow='5.5px 5.5px 0px #2b2b2b'; this.style.backgroundColor='#ffc9c9';"
+             onmouseout="this.style.transform='none'; this.style.boxShadow='3.5px 3.5px 0px #2b2b2b'; this.style.backgroundColor='#ffe3e3';">
+            🌐 開啟專案簡報
+        </div>
+    </a>
+    """, unsafe_allow_html=True)
     if st.button("🗑️ 清除歷史對話", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
@@ -489,10 +473,12 @@ st.markdown(f"""
     <img src="data:image/png;base64,{monster_base64}" class="header-monster" />
     <h1 class="header-title">東吳規章 <span class="highlight-text">智慧領航員</span> ✏️</h1>
     <p class="header-subtitle">
-        我們重新定義了校園法規的檢索體驗。透過 <span style="background-color:#c8f7dc; padding:2px 6px; border-radius:6px; border:2px solid #2b2b2b; font-weight:800; box-shadow:2px 2px 0px #2b2b2b;">無網本地運作</span> 捍衛隱私，以及 <span style="background-color:#ffd8a8; padding:2px 6px; border-radius:6px; border:2px solid #2b2b2b; font-weight:800; box-shadow:2px 2px 0px #2b2b2b;">條文原文秒級對照</span> 阻絕幻覺。在這裡，規章不再是冷冰冰的條文，而是有憑有據的即時智慧。
+        我們重新定義了校園法規的檢索體驗。透過 <span style="background-color:#c8f7dc; padding:2px 6px; border-radius:6px; border:2px solid #2b2b2b; font-weight:800; box-shadow:2px 2px 0px #2b2b2b;">無網本地運作</span> 捍緯隱私，以及 <span style="background-color:#ffd8a8; padding:2px 6px; border-radius:6px; border:2px solid #2b2b2b; font-weight:800; box-shadow:2px 2px 0px #2b2b2b;">條文原文秒級對照</span> 阻絕幻覺。在這裡，規章不再是冷冰冰的條文，而是有憑有據的即時智慧。
     </p>
 </div>
 """, unsafe_allow_html=True)
+
+
 
 # 7. 初始化 Chat History
 if "messages" not in st.session_state:
