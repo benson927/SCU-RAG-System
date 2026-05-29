@@ -164,8 +164,25 @@ python3 scratch/run_faq_evaluation.py
 
 ## 📌 穩定版本還原備忘錄
 
-若系統後續進行其他開發時遇到不穩定、Bug 或回答混淆的情形，可隨時還原到本穩定版（已完成 463 筆 FAQ 口語自訓練、且實施了 RAG 主題感知 Context 淨化過濾器的版本）：
+若系統後續進行其他開發時遇到不穩定、Bug 或回答混淆的情形，可隨時還原到以下任一穩定里程碑版本：
 
-```bash
-git checkout 3e324ab
-```
+### 1. 最新穩定版：`milestone-leave-optimized` (推薦 🌟)
+*   **特性**：
+    *   完成 **1,179 筆 FAQ** 口語增量自訓練。
+    *   修復了中文長提問下（字數 > 30）跳過雙語擴充導致檢索不到英文請假規則的 Bug。
+    *   精簡並最佳化 System Prompt，消除地端模型的「否定偏見」，能 **100% 正確回答期末考請假天數（五個工作日）與審核單位（教務處）**。
+*   **還原指令**（強制還原並清除所有未提交的修改）：
+    ```bash
+    git reset --hard milestone-leave-optimized
+    ```
+*   **唯讀切換指令**（不捨棄當前修改，僅切換至該節點檢視）：
+    ```bash
+    git checkout milestone-leave-optimized
+    ```
+
+### 2. 舊版穩定版：`3e324ab`
+*   **特性**：完成 463 筆 FAQ 口語自訓練、且首度實施 RAG 主題感知 Context 淨化過濾器的版本。
+*   **切換指令**：
+    ```bash
+    git checkout 3e324ab
+    ```
