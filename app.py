@@ -414,19 +414,32 @@ with st.sidebar:
     else:
         st.info("🦉 系統配置：純地端 Ollama 模式")
 
-    # 📊 專案簡報下載
+    # 📊 專案簡報
     st.markdown("---")
-    st.markdown("### 📊 專案簡報下載")
-    pptx_path = "assets/MIS_Project_Benson.pptx"
-    if os.path.exists(pptx_path):
-        with open(pptx_path, "rb") as f:
-            st.download_button(
-                label="📥 下載專案簡報 (PPTX)",
-                data=f,
-                file_name="MIS_Project_Benson.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                use_container_width=True
-            )
+    st.markdown("### 📊 專案簡報")
+    pdf_path = "assets/MIS_Project_Benson_1.pdf"
+    if os.path.exists(pdf_path):
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🖥️ 開啟簡報", use_container_width=True, help="直接在本機彈出 PDF 閱讀器開啟此簡報檔案"):
+                try:
+                    import subprocess
+                    if os.name == 'posix': # macOS/Linux
+                        subprocess.Popen(["open", pdf_path])
+                    elif os.name == 'nt': # Windows
+                        os.startfile(pdf_path)
+                    st.toast("🎉 已嘗試在本機開啟簡報！")
+                except Exception as e:
+                    st.error(f"無法開啟: {e}")
+        with col2:
+            with open(pdf_path, "rb") as f:
+                st.download_button(
+                    label="📥 下載 PDF",
+                    data=f,
+                    file_name="MIS_Project_Benson_1.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
     else:
         st.info("⚠️ 簡報檔案準備中...")
 
