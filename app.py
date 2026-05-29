@@ -293,12 +293,24 @@ with st.sidebar:
     status_type = db_status["status"]
     friendly_files = db_status["files"]
 
+    # 載入檔名與真實標題的映射，用於側邊欄美化
+    import json
+    title_mapping = {}
+    mapping_path = os.path.join(os.path.dirname(__file__), 'backend', 'services', 'title_mapping.json')
+    if os.path.exists(mapping_path):
+        try:
+            with open(mapping_path, 'r', encoding='utf-8') as f:
+                title_mapping = json.load(f)
+        except Exception:
+            pass
+
     if status_type == "ready":
         st.success("🟢 知識庫已就緒")
         if friendly_files:
             with st.expander(f"📁 已載入法規列表 ({len(friendly_files)})", expanded=False):
                 for f in friendly_files:
-                    st.markdown(f"- 📄 {f}")
+                    friendly_name = title_mapping.get(f, f)
+                    st.markdown(f"- 📄 {friendly_name}")
         else:
             st.caption("⚠️ data 資料夾中尚無 PDF 檔案。")
         
@@ -311,7 +323,8 @@ with st.sidebar:
         if friendly_files:
             with st.expander(f"📁 待更新法規列表 ({len(friendly_files)})", expanded=True):
                 for f in friendly_files:
-                    st.markdown(f"- 📄 {f}")
+                    friendly_name = title_mapping.get(f, f)
+                    st.markdown(f"- 📄 {friendly_name}")
         
         if st.button("🔄 立即更新/訓練知識庫", use_container_width=True):
             with st.spinner("🔄 正在重新計算 Embedding 並重建知識庫..."):
