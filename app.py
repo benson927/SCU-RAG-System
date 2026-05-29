@@ -349,9 +349,9 @@ with st.sidebar:
     )
     st.session_state.gemini_key = gemini_key
 
-    # ⚡ 查詢加速模式 (Demo 推薦) toggle
+    # ⚡ 查詢加速模式 toggle
     disable_expansion = st.toggle(
-        "⚡ 查詢加速模式 (Demo 推薦)",
+        "⚡ 查詢加速模式",
         value=st.session_state.get("disable_expansion", True),
         help="開啟後將跳過 LLM 查詢擴展，直接檢索與生成答案，大幅提升地端模式下的反應速度（秒級回應）。"
     )
@@ -359,9 +359,9 @@ with st.sidebar:
 
     # 🦉 強制純地端模式 toggle
     force_local = st.toggle(
-        "🦉 強制純地端模式 (展示用)",
+        "🦉 強制純地端模式",
         value=st.session_state.get("force_local", False),
-        help="啟用後將強制忽略 Gemini API 金鑰，完全使用本地運行的 Ollama 與 Gemma3 模型進行推論與生成，用於向老師展示地端運作實力。"
+        help="啟用後將強制忽略 Gemini API 金鑰，完全使用本地運行的 Ollama 與 Gemma3 模型進行推論與生成，確保所有數據均在本地端安全處理。"
     )
     st.session_state.force_local = force_local
 
