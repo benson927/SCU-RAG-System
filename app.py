@@ -414,10 +414,10 @@ with st.sidebar:
 # 6. 主頁面 Render
 st.markdown("""
 <div class="header-card">
-    <div class="header-badge">🎒 SCU LOCAL & PRIVACY SECURED ✏️</div>
-    <h1 class="header-title">📖 SCU 法規規範 <span class="highlight-text">智慧檢索系統</span> 🎓</h1>
+    <div class="header-badge">⚡ 100% LOCAL SECURED & NO HALLUCINATION ⚖️</div>
+    <h1 class="header-title">東吳規章 <span class="highlight-text">智慧領航員</span> ✏️</h1>
     <p class="header-subtitle">
-        基於地端高效檢索 (Chroma DB) 與大語言模型 (Ollama/Gemma3) 技術，精準匹配核心法規。系統將<strong>即時對照原文</strong>並<strong>嚴謹標註法規出處</strong>，兼顧隱私安全與檢索精準度。
+        我們重新定義了校園法規的檢索體驗。透過 <span style="background-color:#c8f7dc; padding:2px 6px; border-radius:6px; border:2px solid #2b2b2b; font-weight:800; box-shadow:2px 2px 0px #2b2b2b;">無網本地運作</span> 捍衛隱私，以及 <span style="background-color:#ffd8a8; padding:2px 6px; border-radius:6px; border:2px solid #2b2b2b; font-weight:800; box-shadow:2px 2px 0px #2b2b2b;">條文原文秒級對照</span> 阻絕幻覺。在這裡，規章不再是冷冰冰的條文，而是有憑有據的即時智慧。
     </p>
 </div>
 """, unsafe_allow_html=True)
