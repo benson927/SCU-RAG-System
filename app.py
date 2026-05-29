@@ -414,6 +414,22 @@ with st.sidebar:
     else:
         st.info("🦉 系統配置：純地端 Ollama 模式")
 
+    # 📊 專案簡報下載
+    st.markdown("---")
+    st.markdown("### 📊 專案簡報下載")
+    pptx_path = "assets/MIS_Project_Benson.pptx"
+    if os.path.exists(pptx_path):
+        with open(pptx_path, "rb") as f:
+            st.download_button(
+                label="📥 下載專案簡報 (PPTX)",
+                data=f,
+                file_name="MIS_Project_Benson.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                use_container_width=True
+            )
+    else:
+        st.info("⚠️ 簡報檔案準備中...")
+
     # 移入清除歷史對話按鈕，Neobrutalism 風格化
     st.markdown("---")
     if st.button("🗑️ 清除歷史對話", use_container_width=True):
