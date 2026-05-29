@@ -43,8 +43,34 @@ from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 
-DATA_DIR = "data"
-CHROMA_DIR = "chroma_db"
+# 使用相對於本檔案的絕對路徑，以防在不同工作目錄下啟動服務時導致路徑偏差
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(_CURRENT_DIR))
+DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
+CHROMA_DIR = os.path.join(_PROJECT_ROOT, "chroma_db")
+
+# 主題關鍵字 → 優先來源文件映射表（用於 RRF 後的主題感知重排序）
+# 解決問題：BM25 對英文 PDF（如請假規則）無法匹配中文問句，卻因「辦理」等通用詞
+# 將社團章程等無關文件引入最終 context，導致 LLM 作答错誤
+_TOPIC_SOURCE_MAP = [
+    ({"請假", "事假", "病假", "婚假", "喪假", "產假", "陪產假", "公假", "缺課", "假期", "假別"},
+     "6800ade9ad279805632161.pdf"),   # 東吳大學學生請假規則
+    ({"工讀", "時薪", "工讀金", "打工", "助學工讀"},
+     "6261123f68ff3747511986.pdf"),   # 東吳大學學生工讀助學實施辦法
+    ({"宿舍", "住宿", "校外宿舍", "舍監"},
+     "6418115967cf9033858547.pdf"),   # 東吳大學校外學生宿舍輔導及管理辦法
+    ({"清寒", "急難", "救助金", "貧困"},
+     "57eecfa622cfb319332789.pdf"),   # 東吳大學學生清寒急難救助金實施辦法
+    ({"社團", "社員", "幹部", "社長"},
+     "6228687cc02e7827840235.pdf"),   # 東吳大學學生社團組織及活動辦法
+]
+
+def _detect_priority_source(query: str) -> str:
+    """根據問題關鍵字偵測應優先排序的主題文件（返回檔名，無匹配返回空字串）"""
+    for keywords, source_file in _TOPIC_SOURCE_MAP:
+        if any(kw in query for kw in keywords):
+            return source_file
+    return ""
 
 
 # 確保 PDF 目錄存在
@@ -110,14 +136,65 @@ def init_vector_db(force_rebuild: bool = False):
         loader = PyPDFDirectoryLoader(DATA_DIR)
         documents = loader.load()
         
+        # 終極 PDF 編碼與 Ligature 合字清洗器，還原被破壞的英文單字，使地端 LLM 能正確閱讀理解
+        for doc in documents:
+            if doc.page_content:
+                doc.page_content = doc.page_content.replace('\u014c', 'ft')  # Ō -> ft (after)
+                doc.page_content = doc.page_content.replace('\u019f', 'ti')  # Ɵ -> ti (national)
+                doc.page_content = doc.page_content.replace('\u01a9', 'tt')  # Ʃ -> tt (attend)
+                doc.page_content = doc.page_content.replace('\ufb00', 'ff')  # ﬀ -> ff
+                doc.page_content = doc.page_content.replace('\ufb01', 'fi')  # ﬁ -> fi
+                doc.page_content = doc.page_content.replace('\ufb02', 'fl')  # ﬂ -> fl
+                doc.page_content = doc.page_content.replace('\ufb03', 'ffi') # ﬃ -> ffi
+        
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200
         )
         chunks = text_splitter.split_documents(documents)
         
+        # 【FAQ 口語問題整合】讀取 faq_cache.json，將每個口語問題作為獨立 Document 嵌入
+        # 這讓使用者用口語提問時能命中正確的法規 chunk，實現「雙路向量檢索」
+        faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
+        faq_docs = []
+        if os.path.exists(faq_cache_path):
+            try:
+                with open(faq_cache_path, 'r', encoding='utf-8') as f:
+                    faq_cache = json.load(f)
+                for entry in faq_cache.values():
+                    source_name = entry.get("source", "未知來源")
+                    page = entry.get("page", 1)
+                    original_content = entry.get("content", "")
+                    
+                    # 對既有快取中的原文做終極防禦性 Ligature 清洗，還原破碎英文
+                    if original_content:
+                        original_content = original_content.replace('\u014c', 'ft')
+                        original_content = original_content.replace('\u019f', 'ti')
+                        original_content = original_content.replace('\u01a9', 'tt')
+                        original_content = original_content.replace('\ufb00', 'ff')
+                        original_content = original_content.replace('\ufb01', 'fi')
+                        original_content = original_content.replace('\ufb02', 'fl')
+                        original_content = original_content.replace('\ufb03', 'ffi')
+                        
+                    for faq_q in entry.get("faqs", []):
+                        if faq_q.strip():
+                            faq_docs.append(Document(
+                                page_content=faq_q.strip(),
+                                metadata={
+                                    "source": os.path.join(DATA_DIR, source_name),
+                                    "page": page - 1,  # LangChain page 索引從 0 開始
+                                    "faq_question": faq_q.strip(),
+                                    "original_content": original_content,
+                                    "is_faq": True  # 顯式標記，用於 Python 層過濾
+                                }
+                            ))
+                print(f"✅ 已整合 {len(faq_docs)} 個口語 FAQ 問題到向量資料庫。")
+            except Exception as e:
+                print(f"⚠️ 讀取 FAQ 快取失敗，跳過 FAQ 整合: {e}")
+        
+        all_docs = chunks + faq_docs
         db = Chroma.from_documents(
-            documents=chunks,
+            documents=all_docs,
             embedding=embeddings,
             persist_directory=CHROMA_DIR
         )
@@ -256,40 +333,95 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     else:
         queries = generate_expanded_queries(user_query, api_key)
     
-    dense_lists = []
-    sparse_lists = []
-    
-    # 3. 準備 BM25 語料庫
+    # 3. 讀取向量資料庫中所有文件（用於雙庫分離策略）
     all_data = db.get()
     all_texts = all_data["documents"]
     all_metadatas = all_data["metadatas"]
     
-    if all_texts:
-        tokenized_corpus = [list(jieba.cut(doc)) for doc in all_texts]
-        bm25 = BM25Okapi(tokenized_corpus)
+
+    # 4. 多重查詢檢索（雙庫分離策略：FAQ 語意命中 + PDF 法規原文）
+    # 使用 Python 層手動過濾，一次取 k=20 結果後分類
+    faq_dense_lists = []    # FAQ 口語問題命中結果
+    pdf_dense_lists = []    # PDF 法規原文命中結果
+    pdf_sparse_lists = []   # PDF BM25 關鍵字命中結果
+    
+    # 分離 BM25 語料庫為 PDF chunk 部分
+    pdf_texts = []
+    pdf_metadatas = []
+    for txt, meta in zip(all_texts, all_metadatas):
+        if not meta.get("faq_question"):
+            pdf_texts.append(txt)
+            pdf_metadatas.append(meta)
+    
+    if pdf_texts:
+        tokenized_pdf_corpus = [list(jieba.cut(doc)) for doc in pdf_texts]
+        bm25_pdf = BM25Okapi(tokenized_pdf_corpus)
     else:
-        bm25 = None
-        
-    # 4. 多重查詢檢索
+        bm25_pdf = None
+    
     for q in queries:
-        # 向量檢索 (Chroma)
-        docs_dense = db.similarity_search(q, k=4)
-        dense_lists.append(docs_dense)
+        # 一次取得較多結果，再在 Python 層手動分類（避免 Chroma filter 版本相容問題）
+        docs_all_dense = db.similarity_search(q, k=30)  # 擴大候選池，降低假陰性機率
         
-        # 關鍵字檢索 (BM25)
-        if bm25 and all_texts:
+        # 分類：is_faq=True 的為 FAQ docs，其餘為 PDF chunk docs
+        docs_faq_q = [d for d in docs_all_dense if d.metadata.get("is_faq") is True][:4]
+        docs_pdf_q = [d for d in docs_all_dense if d.metadata.get("is_faq") is not True][:8]
+        
+        if docs_faq_q:
+            faq_dense_lists.append(docs_faq_q)
+        if docs_pdf_q:
+            pdf_dense_lists.append(docs_pdf_q)
+        
+        # PDF BM25 關鍵字搜尋（只在 PDF chunk 語料庫中搜尋）
+        if bm25_pdf and pdf_texts:
             tokenized_q = list(jieba.cut(q))
-            scores = bm25.get_scores(tokenized_q)
-            top_n_idx = bm25.get_top_n(tokenized_q, range(len(all_texts)), n=4)
+            scores = bm25_pdf.get_scores(tokenized_q)
+            top_n_idx = bm25_pdf.get_top_n(tokenized_q, range(len(pdf_texts)), n=4)
             docs_sparse = []
             for idx in top_n_idx:
                 if scores[idx] > 0:
-                    docs_sparse.append(Document(page_content=all_texts[idx], metadata=all_metadatas[idx]))
-            sparse_lists.append(docs_sparse)
+                    docs_sparse.append(Document(page_content=pdf_texts[idx], metadata=pdf_metadatas[idx]))
+            pdf_sparse_lists.append(docs_sparse)
+
             
     # 5. RRF 倒數排序融合與去重
-    merged_docs = rrf_fusion(dense_lists, sparse_lists, k=60)
-    docs = merged_docs[:4]  # 僅取出前 4 個最相關的片段送給 LLM
+    # 先對 PDF chunks 進行 RRF 融合
+    merged_pdf_docs = rrf_fusion(pdf_dense_lists, pdf_sparse_lists, k=60)
+    
+    # 主題感知重排序：偵測到特定主題關鍵字時，將對應文件的 chunks 置頂
+    # 原理：Dense 搜尋語義跨語言正確，但 BM25 因通用詞（如「辦理」）命中無關中文文件（如社團章程），
+    # RRF 融合後可能將錯誤文件置於最終 context。此步驟在 RRF 後修正排序，確保主題對應文件優先。
+    _priority_src = _detect_priority_source(user_query)
+    if _priority_src:
+        _prio_docs = [d for d in merged_pdf_docs if _priority_src in d.metadata.get("source", "")]
+        _other_docs = [d for d in merged_pdf_docs if _priority_src not in d.metadata.get("source", "")]
+        merged_pdf_docs = _prio_docs + _other_docs
+    
+    pdf_docs = merged_pdf_docs[:4]  # 取前 4 個最相關法規 chunk
+    
+    # 取最相關的 FAQ 命中（最多 3 個，避免單一 query 的第一名被其他法規 FAQ 競爭排擠）
+    faq_docs_result = []
+    if faq_dense_lists:
+        seen = set()
+        for faq_list in faq_dense_lists:
+            for d in faq_list[:3]:  # 擴大至前 3 名 FAQ 候選
+                if d.page_content not in seen:
+                    seen.add(d.page_content)
+                    faq_docs_result.append(d)
+        faq_docs_result = faq_docs_result[:3]  # 最多保留 3 個 FAQ 命中，提高容錯率
+    
+    # 合併：FAQ 命中放前面（若有命中），再加 PDF chunks
+    docs = faq_docs_result + pdf_docs
+    
+    # 主題感知淨化過濾器：若偵測到特定主題文件，且檢索結果中包含此文件，則精準排除無關文件，避免地端模型混淆
+    if _priority_src:
+        purified_docs = [d for d in docs if _priority_src in d.metadata.get("source", "")]
+        if purified_docs:
+            docs = purified_docs
+            print(f"🎯 觸發主題感知淨化過濾器，僅保留與主題 {_priority_src} 相關的 {len(docs)} 個 chunks，排除其他無關法規。")
+            
+    docs = docs[:7]  # 最多 7 個 context chunks（3 FAQ + 4 PDF）
+
     
     if not docs:
         yield {
@@ -319,17 +451,32 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
         page = doc.metadata.get("page", 0) + 1  # LangChain page 索引從 0 開始
         
         friendly_title = title_mapping.get(source_name, source_name)
+        
+        # 判斷此 chunk 是否為 FAQ 口語問題（有 faq_question metadata）
+        faq_question = doc.metadata.get("faq_question", None)
+        # 若為 FAQ doc，使用儲存的法規原文作為 context；否則直接使用 chunk 本身
+        original_content = doc.metadata.get("original_content", None)
+        display_content = original_content if (faq_question and original_content) else doc.page_content
+        
+        # 偵測內容語言：若英文字母比例超過 70%，加上跨語言提示標注，幫助 LLM 正確理解
+        english_alpha = sum(1 for c in display_content if c.isascii() and c.isalpha())
+        total_alpha = sum(1 for c in display_content if c.isalpha())
+        is_english = total_alpha > 0 and (english_alpha / total_alpha) > 0.7
+        lang_note = " [⚠️ 英文原文：請閱讀理解語意後以中文回答，不可因語言不同說找不到]" if is_english else ""
             
-        context_parts.append(f"[來源檔案: {friendly_title} (第 {page} 頁)]\n{doc.page_content}")
+        context_parts.append(f"[來源檔案: {friendly_title} (第 {page} 頁){lang_note}]\n{display_content}")
         
         source_info = f"{friendly_title} (第 {page} 頁)"
         if source_info not in sources:
             sources.append(source_info)
-            
-        detailed_sources.append({
+        
+        ds_entry = {
             "title": source_info,
-            "content": doc.page_content
-        })
+            "content": display_content
+        }
+        if faq_question:
+            ds_entry["hit_faq"] = faq_question
+        detailed_sources.append(ds_entry)
             
     context_text = "\n\n".join(context_parts)
     
@@ -338,18 +485,25 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
         "type": "metadata",
         "sources": sources,
         "detailed_sources": detailed_sources,
-        "engine_type": "API 加速模式 ⚡" if api_key else "地端模式 🦉"
+        "engine_type": "API 加速模式 ⚡" if api_key else "地端模式 🦉",
+        "expanded_queries": queries
     }
     
     # 6. 設計地端 RAG Prompt
     system_prompt = (
         "你是一位嚴謹的企業內部知識庫助手。請根據以下提供的 Context（檢索到的法規或文檔內容）回答使用者的問題。\n"
         "【嚴格要求】：\n"
-        "1. 僅根據 Context 內有的事實進行回答。如果 Context 中包含與問題相關的描述、依循標準或原則性規定（例如「以不低於法定基本時薪為原則」、「由委員會另訂之」等），請如實回答該原則或規定，不可以因為沒有具體數值或無直接數值就回答找不到。只有當 Context 內容與問題完全無關且無法推斷出任何相關法規規定時，才直接說：「抱歉，在現有的企業知識庫中找不到與您問題相關的解答」，切勿憑空想像或加入外部知識。\n"
-        "2. 所有的回覆與說明必須使用中文。\n"
-        "3. 答案必須精準，不可有胡亂編造或推論過度的情況，並在回答中提及你的參考資料來源（檔名與頁數）。\n"
-        "4. 【簡短關鍵字特別處理】：如果使用者輸入的是簡短的關鍵字或名詞（例如「繁星」、「時薪」等），而非完整問題，請將 Context 中所有提及該關鍵字的法規規定、獎勵、標準等內容整理並詳細列出，不可以說找不到。\n"
-        "5. 【排版要求】：請使用 Markdown 格式讓答案更易讀。請適當地使用條列式（Bullet points）、針對關鍵數字或重點項目使用**粗體**，並且適當分段。\n\n"
+        "1. 僅根據 Context 內有的事實進行回答。如果 Context 中包含與問題相關的描述、依循標準或原則性規定（例如「以不低於法定基本時薪為原則」、「由委員會另訂之」等），請如實回答該原則或規定，不可以因為沒有具體數值或無直接數值就回答找不到。切勿憑空想像或加入外部知識。\n"
+        "2. **【找不到時的特殊處理】**：只有當 Context 內容與問題完全無關，且完全找不到任何相關法規規定時，你才能在你的整個回答中「僅輸出」這一句話：「抱歉，在現有的企業知識庫中找不到與您問題相關的解答」，不准附帶任何其他字句。如果已經找到了部分資訊並做出了解答，則「絕對不准」在回答中提及任何找不到的抱歉字眼。\n"
+        "3. 所有的回覆與說明必須使用中文。\n"
+        "4. 答案必須精準，不可有胡亂編造或推論過度的情況，並在回答中提及你的參考資料來源（檔名與頁數）。\n"
+        "5. 【簡短關鍵字特別處理】：如果使用者輸入的是簡短的關鍵字或名詞（例如「繁星」、「時薪」等），而非完整問題，請將 Context 中所有提及該關鍵字的法規規定、獎勵、標準等內容整理並詳細列出，不可以說找不到。\n"
+        "6. 【排版要求】：請使用 Markdown 格式讓答案更易讀。請適當地使用條列式（Bullet points）、針對關鍵數字或重點項目使用**粗體**，並且適當分段。\n"
+        "7. 【名詞對照提示】：如果檢索到的 Context 為英文，當翻譯為中文時，請使用台灣大專院校的慣用語。例如：將 「Academic Affairs Office」 翻譯為 「教務處」，將 「Student Affairs Office」 翻譯為 「學務處」，將 「department chair」 翻譯為 「學系主任」。\n"
+        "8. 【跨語言強制閱讀規定】：Context 中的法規原文可能為英文。即使如此，你仍必須仔細閱讀並理解英文語意，再以中文回答。**絕對禁止**因 Context 是英文就判斷「找不到相關資料」，這是嚴重的系統錯誤。英文法規與中文問題之間存在語意對應，你必須進行跨語言理解與對照作答。\n"
+        "9. 【嚴禁推論與條文混用】：你必須完整閱讀所有 Context 再作答。**嚴格禁止**以下兩種錯誤行為：\n"
+        "   ① 若 Context 中已有明確的規定或期限，必須直接引用原文，絕對不可說「Context 中沒有明確說明」後再用「推論」或「建議」填補——這是嚴重錯誤。\n"
+        "   ② 不同假別（如考試請假、一般事假/病假）的規定分屬不同條文，**絕對不可混用**：若問的是一般事假/病假的截止期限，不得引用考試請假（如期末考補考五個工作日）的條文來作答；必須找到正確假別對應的條文後再回答。\n\n"
         "Context:\n"
         "{context}"
     )
@@ -361,6 +515,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     
     # 7. 呼叫 LLM 進行生成（包含 Gemini API 與地端 Ollama 備援降級邏輯）
     use_gemini = False
+    has_yielded_content = False
     
     if api_key:
         try:
@@ -383,20 +538,38 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
                 stream=True
             )
             for chunk in response:
-                if chunk.text:
+                # 某些情況下取得 chunk.text 會因被阻擋或出錯而拋出異常，用 try-except 保護
+                try:
+                    text_content = chunk.text
+                except Exception:
+                    text_content = ""
+                
+                if text_content:
+                    has_yielded_content = True
                     yield {
                         "type": "content",
-                        "content": chunk.text
+                        "content": text_content
                     }
             use_gemini = True
         except Exception as e:
-            print(f"⚠️ Gemini API 串流失敗，將自動降級至地端 Ollama: {e}")
-            yield {
-                "type": "metadata",
-                "sources": sources,
-                "detailed_sources": detailed_sources,
-                "engine_type": "地端模式 🦉 (API 降級)"
-            }
+            print(f"⚠️ Gemini API 串流失敗: {e}")
+            if not has_yielded_content:
+                # 一個字都還沒輸出，代表是初始連線問題或 API 金鑰失效，此時可以安全降級地端
+                print("🔄 偵測到一開始就出錯，自動降級至地端 Ollama 模式。")
+                yield {
+                    "type": "metadata",
+                    "sources": sources,
+                    "detailed_sources": detailed_sources,
+                    "engine_type": "地端模式 🦉 (API 降級)"
+                }
+            else:
+                # 已經輸出過內容，說明是中途斷掉或安全過濾，禁止再降級，避免拼接打架
+                print("⚠️ 已經輸出過內容，為避免答案拼接打架，中止並直接收尾。")
+                use_gemini = True  # 標記為 True 阻擋後面進入地端 block
+                yield {
+                    "type": "content",
+                    "content": "\n\n*(⚠️ 回答因 API 額度限額、網路中斷或安全機制篩選而未完整生成)*"
+                }
             
     if not use_gemini:
         # 呼叫地端 Ollama 串流
@@ -416,12 +589,14 @@ def query_rag(user_query: str, api_key: str = None, db = None, disable_expansion
     sources = []
     detailed_sources = []
     engine_type = "地端模式 🦉"
+    expanded_queries = []
     
     for item in generator:
         if item["type"] == "metadata":
             sources = item.get("sources", [])
             detailed_sources = item.get("detailed_sources", [])
             engine_type = item.get("engine_type", "地端模式 🦉")
+            expanded_queries = item.get("expanded_queries", [])
         elif item["type"] == "content":
             answer_parts.append(item["content"])
         elif item["type"] == "error":
@@ -429,12 +604,14 @@ def query_rag(user_query: str, api_key: str = None, db = None, disable_expansion
                 "answer": item["content"],
                 "sources": [],
                 "detailed_sources": [],
-                "engine_type": "未啟動"
+                "engine_type": "未啟動",
+                "expanded_queries": []
             }
             
     return {
         "answer": "".join(answer_parts),
         "sources": sources,
         "detailed_sources": detailed_sources,
-        "engine_type": engine_type
+        "engine_type": engine_type,
+        "expanded_queries": expanded_queries
     }

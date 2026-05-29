@@ -33,11 +33,26 @@ from backend.services.rag_service import query_rag, query_rag_stream, check_vect
 if "db" not in st.session_state:
     st.session_state.db = None
 
+# 自動偵測向量資料庫是否已重建（比對 db_meta.json 的 MD5 hash）
+# 解決用 Python 腳本重建 DB 後，Streamlit session 仍使用舊快取的問題
+import hashlib as _hashlib_
+_db_meta_path_ = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chroma_db", "db_meta.json")
+_cur_db_hash_ = ""
+if os.path.exists(_db_meta_path_):
+    try:
+        with open(_db_meta_path_, 'r', encoding='utf-8') as _mf_:
+            _cur_db_hash_ = _hashlib_.md5(_mf_.read().encode()).hexdigest()[:8]
+    except Exception:
+        pass
+if st.session_state.get("_db_hash_") != _cur_db_hash_:
+    st.session_state.db = None  # 清除舊快取，強制重新載入最新向量庫
+    st.session_state["_db_hash_"] = _cur_db_hash_
+
 # ==============================================================================
 # Streamlit 網頁介面設計與配置
 # ==============================================================================
 st.set_page_config(
-    page_title="PDF 規範與法規智慧檢索系統",
+    page_title="🎓 東吳規章智慧領航員",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -330,6 +345,60 @@ html, body, [class*="css"], .stApp {
 
 # 5. 側邊欄配置面版
 with st.sidebar:
+    # 頂部組別大標題卡片 (新野獸主義硬陰影)
+    st.markdown("""
+    <div style="border: 3px solid #2b2b2b; padding: 1.2rem 1rem; border-radius: 16px; 
+                background: linear-gradient(135deg, #fff5f5 0%, #f0f7ff 100%); 
+                box-shadow: 4px 4px 0px #2b2b2b; margin-bottom: 1.5rem; text-align: center;">
+        <h3 style="margin: 0; color: #2b2b2b; font-weight: 800; font-size: 1.25rem; font-family: 'Outfit', 'Noto Sans TC', sans-serif;">
+            🎓 東吳規章智慧領航員
+        </h3>
+        <div style="display: inline-block; background-color: #ffe066; border: 1.5px solid #2b2b2b; 
+                    padding: 0.15rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; 
+                    font-weight: 800; color: #2b2b2b; margin-top: 0.5rem; box-shadow: 1.5px 1.5px 0px #2b2b2b;">
+            MIS 期末專案 • Benson組 🚀
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 第一段：⚙️ 系統配置
+    st.markdown("### ⚙️ 系統配置")
+    # 優先從 session_state 讀取，若無則從環境變數自動帶入
+    default_key = st.session_state.get("gemini_key", os.environ.get("GEMINI_API_KEY", ""))
+    gemini_key = st.text_input(
+        "🔑 Gemini API 金鑰 (選填)",
+        type="password",
+        value=default_key,
+        help="填入金鑰即可啟用 Google Gemini 雲端 API 加速模式，免除本地運行的卡頓。未填寫則預設使用地端 Ollama 模式。"
+    )
+    st.session_state.gemini_key = gemini_key
+
+    # ⚡ 查詢加速模式 toggle
+    disable_expansion = st.toggle(
+        "⚡ 查詢加速模式",
+        value=st.session_state.get("disable_expansion", True),
+        help="開啟後將跳過 LLM 查詢擴展，直接檢索與生成答案，大幅提升地端模式下的反應速度（秒級回應）。"
+    )
+    st.session_state.disable_expansion = disable_expansion
+
+    # 🦉 純地端模式 toggle
+    force_local = st.toggle(
+        "🦉 純地端模式",
+        value=st.session_state.get("force_local", False),
+        help="啟用後將忽略 Gemini API 金鑰，完全使用本地運行的 Ollama 與 Gemma3 模型進行推論與生成，確保所有數據均在本地端 safe 處理。"
+    )
+    st.session_state.force_local = force_local
+
+    if force_local:
+        st.info("🦉 系統配置：純地端 Ollama 模式")
+    elif gemini_key:
+        st.success("⚡ 系統配置：API 加速模式 (Chroma 依然本機執行)")
+    else:
+        st.info("🦉 系統配置：純地端 Ollama 模式")
+
+    st.markdown("---")
+
+    # 第二段：📚 知識庫狀態
     st.markdown("### 📚 知識庫狀態")
     db_status = check_vector_db_status()
     status_type = db_status["status"]
@@ -378,44 +447,8 @@ with st.sidebar:
         st.error("🔴 知識庫為空")
         st.info("請於 `data/` 資料夾下放入 PDF 法規檔案。")
         st.session_state.db = None
-        
-    st.markdown("---")
-    st.markdown("### ⚙️ 系統配置")
-    # 優先從 session_state 讀取，若無則從環境變數自動帶入
-    default_key = st.session_state.get("gemini_key", os.environ.get("GEMINI_API_KEY", ""))
-    gemini_key = st.text_input(
-        "🔑 Gemini API 金鑰 (選填)",
-        type="password",
-        value=default_key,
-        help="填入金鑰即可啟用 Google Gemini 雲端 API 加速模式，免除本地運行的卡頓。未填寫則預設使用地端 Ollama 模式。"
-    )
-    st.session_state.gemini_key = gemini_key
 
-    # ⚡ 查詢加速模式 toggle
-    disable_expansion = st.toggle(
-        "⚡ 查詢加速模式",
-        value=st.session_state.get("disable_expansion", True),
-        help="開啟後將跳過 LLM 查詢擴展，直接檢索與生成答案，大幅提升地端模式下的反應速度（秒級回應）。"
-    )
-    st.session_state.disable_expansion = disable_expansion
-
-    # 🦉 純地端模式 toggle
-    force_local = st.toggle(
-        "🦉 純地端模式",
-        value=st.session_state.get("force_local", False),
-        help="啟用後將忽略 Gemini API 金鑰，完全使用本地運行的 Ollama 與 Gemma3 模型進行推論與生成，確保所有數據均在本地端安全處理。"
-    )
-    st.session_state.force_local = force_local
-
-    if force_local:
-        st.info("🦉 系統配置：純地端 Ollama 模式")
-    elif gemini_key:
-        st.success("⚡ 系統配置：API 加速模式 (Chroma 依然本機執行)")
-    else:
-        st.info("🦉 系統配置：純地端 Ollama 模式")
-
-
-    # 移入清除歷史對話按鈕，Neobrutalism 風格化
+    # 第三段：專案簡報與清除歷史對話按鈕
     st.markdown("---")
     st.markdown("""
     <a href="/app/static/MIS_Project_Benson_Sure.pdf" target="_blank" style="text-decoration: none;">
@@ -435,35 +468,27 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # 將系統說明與使用指南 Pin 在側邊欄，預設展開
-    with st.expander("📌 系統說明與使用指南", expanded=True):
+    # 第四段：📌 系統說明與使用指南 (預設折疊，全新技術文案)
+    with st.expander("📌 系統說明與使用指南", expanded=False):
         st.markdown("""
-        **🎓 企業專屬知識庫 RAG 系統 (Ollama)**
+        **🎓 東吳規章智慧領航員 (RAG Pro)**
         
-        本系統是一個**純本地運作**的地端 RAG 智慧檢索系統，旨在提供無延遲、隱私安全且精準的法規與規範解答。
-        
-        ---
-        
-        ### 🌟 系統特色
-        1. **地端 LLM 引擎**：
-           - 結合 **Ollama** 與 **Gemma 3** 模型，確保對話不需連網，保護機密資料。
-           - 搭配 **nomic-embed-text** 模型，針對法規文檔建立精準的 Chroma 向量資料庫。
-        2. **嚴格無偏差設計**：
-           - **防幻覺機制**：透過嚴謹的 Prompt，限制 LLM 只能根據檢索到的段落進行回答，不編造事實。
-           - **出處標註與原文展開**：每筆解答都會列出資料來源檔名及頁碼，並附帶原文對照功能。
+        本系統是由 **東吳大學 MIS 期末專案 - Benson 組** 打造的校園智慧法規諮詢平台。我們採用先進的 **地端安全 RAG（檢索增強生成）架構**，保證資料隱私並提供精準條文對照。
         
         ---
         
-        ### 🛠️ 啟動與運行指令
-        請先開啟終端機，執行以下指令**切換至專案目錄**：
-        ```bash
-        cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
-        ```
+        ### 🚀 核心技術亮點
+        1. **雙路向量檢索還原 (Two-Way Retrieval & Restoration)**：
+           - **口語 FAQ 語意加速**：整合 **400+ 筆** 模擬學生日常發問的 FAQ 快取，精準對比口語提問。
+           - **原文還原防幻覺**：意圖匹配成功後，背景自動將內容還原為正式法規原文送交大語言模型（LLM），**杜絕幻覺與瞎編**。
         
-        接著執行啟動指令：
-        ```bash
-        python3 -m streamlit run app.py
-        ```
+        2. **地端 LLM 隱私架構**：
+           - 整合本地 **Ollama** 引擎、**Gemma 3** 模型與 **nomic-embed-text** 向量嵌入。
+           - 具備 **Hybrid Failover (混合彈性容錯)** 機制，在 API 超時或斷網時自動降級回純地端運行。
+           
+        3. **新野獸主義視覺反饋**：
+           - 實時可視化檢索思維路徑與 FAQ 命中貼紙，兼顧技術透明度與現代設計美感。
+        
         """)
 
 # 6. 主頁面 Render
@@ -489,13 +514,28 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"], avatar="🧑‍🎓" if message["role"] == "user" else "🦉"):
         st.markdown(message["content"])
         if message["role"] == "assistant":
-            if "engine_type" in message:
-                st.caption(f"推論引擎：{message['engine_type']}")
+            engine = message.get("engine_type", "地端模式 🦉")
+            eqs = message.get("expanded_queries", [])
+            caption_text = f"推論引擎：{engine}"
+            if eqs:
+                caption_text += f" | 🔍 檢索路徑：{', '.join([f'「{q}」' for q in eqs])}"
+            st.caption(caption_text)
+            
             if "detailed_sources" in message and message["detailed_sources"]:
                 with st.expander("🔍 檢索到的法規參考條文原文"):
                     for s in message["detailed_sources"]:
+                        hit_tag = ""
+                        if s.get("hit_faq"):
+                            hit_tag = f"""
+                            <div style="background-color: #fff9db; border: 2.5px dashed #2b2b2b; 
+                                        border-radius: 8px; padding: 0.5rem 0.8rem; margin-bottom: 0.7rem; 
+                                        font-size: 0.85rem; font-weight: 700; color: #d9480f; box-shadow: 2px 2px 0px #2b2b2b;">
+                                💡 語意匹配到口語問題：「{s["hit_faq"]}」
+                            </div>
+                            """
                         st.markdown(f"""
                         <div class="chunk-card">
+                            {hit_tag}
                             <div class="chunk-source">
                                 <span>📌 {s["title"]}</span>
                             </div>
@@ -530,7 +570,8 @@ if query := st.chat_input("請輸入您想查詢的法規關鍵字或問題... (
         st.session_state.current_stream_meta = {
             "sources": [],
             "detailed_sources": [],
-            "engine_type": "地端模式 🦉"
+            "engine_type": "地端模式 🦉",
+            "expanded_queries": []
         }
         
         def run_stream():
@@ -547,7 +588,8 @@ if query := st.chat_input("請輸入您想查詢的法規關鍵字或問題... (
                         st.session_state.current_stream_meta = {
                             "sources": chunk.get("sources", []),
                             "detailed_sources": chunk.get("detailed_sources", []),
-                            "engine_type": chunk.get("engine_type", "地端模式 🦉")
+                            "engine_type": chunk.get("engine_type", "地端模式 🦉"),
+                            "expanded_queries": chunk.get("expanded_queries", [])
                         }
                     elif chunk["type"] == "content":
                         # 收到第一個生成內容時，清空檢索提示字，使回答平滑地逐字出現
@@ -571,15 +613,29 @@ if query := st.chat_input("請輸入您想查詢的法規關鍵字或問題... (
         meta = st.session_state.current_stream_meta
         engine = meta.get("engine_type", "地端模式 🦉")
         detailed_sources = meta.get("detailed_sources", [])
+        expanded_queries = meta.get("expanded_queries", [])
         
-        st.caption(f"推論引擎：{engine}")
+        caption_text = f"推論引擎：{engine}"
+        if expanded_queries:
+            caption_text += f" | 🔍 檢索路徑：{', '.join([f'「{q}」' for q in expanded_queries])}"
+        st.caption(caption_text)
         
         # 顯示原文參考條文
         if detailed_sources:
             with st.expander("🔍 檢索到的法規參考條文原文"):
                 for s in detailed_sources:
+                    hit_tag = ""
+                    if s.get("hit_faq"):
+                        hit_tag = f"""
+                        <div style="background-color: #fff9db; border: 2.5px dashed #2b2b2b; 
+                                    border-radius: 8px; padding: 0.5rem 0.8rem; margin-bottom: 0.7rem; 
+                                    font-size: 0.85rem; font-weight: 700; color: #d9480f; box-shadow: 2px 2px 0px #2b2b2b;">
+                            💡 語意匹配到口語問題：「{s["hit_faq"]}」
+                        </div>
+                        """
                     st.markdown(f"""
                     <div class="chunk-card">
+                        {hit_tag}
                         <div class="chunk-source">
                             <span>📌 {s["title"]}</span>
                         </div>
@@ -592,5 +648,6 @@ if query := st.chat_input("請輸入您想查詢的法規關鍵字或問題... (
                 "role": "assistant",
                 "content": answer,
                 "engine_type": engine,
-                "detailed_sources": detailed_sources
+                "detailed_sources": detailed_sources,
+                "expanded_queries": expanded_queries
             })
