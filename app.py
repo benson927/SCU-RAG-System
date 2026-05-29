@@ -2,9 +2,25 @@ import streamlit as st
 import os
 import sys
 
+# 嘗試載入本機 .env 檔案中的環境變數 (避免引入額外依賴套件)
+if os.path.exists(".env"):
+    try:
+        with open(".env", "r", encoding="utf-8") as f:
+            for line in f:
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    val = v.strip().strip("'").strip('"')
+                    os.environ[k.strip()] = val
+    except Exception:
+        pass
+
 # 將 backend 路徑加入 sys.path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-from backend.services.rag_service import query_rag
+from backend.services.rag_service import query_rag, query_rag_stream, check_vector_db_status, init_vector_db
+
+# 初始化向量資料庫快取
+if "db" not in st.session_state:
+    st.session_state.db = None
 
 # ==============================================================================
 # Streamlit 網頁介面設計與配置
@@ -272,16 +288,73 @@ html, body, [class*="css"], .stApp {
 
 # 5. 側邊欄配置面版
 with st.sidebar:
+    st.markdown("### 📚 知識庫狀態")
+    db_status = check_vector_db_status()
+    status_type = db_status["status"]
+    friendly_files = db_status["files"]
+
+    if status_type == "ready":
+        st.success("🟢 知識庫已就緒")
+        if friendly_files:
+            with st.expander(f"📁 已載入法規列表 ({len(friendly_files)})", expanded=False):
+                for f in friendly_files:
+                    st.markdown(f"- 📄 {f}")
+        else:
+            st.caption("⚠️ data 資料夾中尚無 PDF 檔案。")
+        
+        # 載入向量資料庫到 session_state 供後續發問使用
+        if st.session_state.db is None:
+            st.session_state.db = init_vector_db()
+            
+    elif status_type == "outdated":
+        st.warning("🟡 偵測到新法規文件")
+        if friendly_files:
+            with st.expander(f"📁 待更新法規列表 ({len(friendly_files)})", expanded=True):
+                for f in friendly_files:
+                    st.markdown(f"- 📄 {f}")
+        
+        if st.button("🔄 立即更新/訓練知識庫", use_container_width=True):
+            with st.spinner("🔄 正在重新計算 Embedding 並重建知識庫..."):
+                st.session_state.db = init_vector_db(force_rebuild=True)
+            st.success("🎉 知識庫更新成功！")
+            st.rerun()
+            
+    else:  # "empty"
+        st.error("🔴 知識庫為空")
+        st.info("請於 `data/` 資料夾下放入 PDF 法規檔案。")
+        st.session_state.db = None
+        
+    st.markdown("---")
     st.markdown("### ⚙️ 系統配置")
+    # 優先從 session_state 讀取，若無則從環境變數自動帶入
+    default_key = st.session_state.get("gemini_key", os.environ.get("GEMINI_API_KEY", ""))
     gemini_key = st.text_input(
         "🔑 Gemini API 金鑰 (選填)",
         type="password",
-        value=st.session_state.get("gemini_key", ""),
+        value=default_key,
         help="填入金鑰即可啟用 Google Gemini 雲端 API 加速模式，免除本地運行的卡頓。未填寫則預設使用地端 Ollama 模式。"
     )
     st.session_state.gemini_key = gemini_key
 
-    if gemini_key:
+    # ⚡ 查詢加速模式 (Demo 推薦) toggle
+    disable_expansion = st.toggle(
+        "⚡ 查詢加速模式 (Demo 推薦)",
+        value=st.session_state.get("disable_expansion", True),
+        help="開啟後將跳過 LLM 查詢擴展，直接檢索與生成答案，大幅提升地端模式下的反應速度（秒級回應）。"
+    )
+    st.session_state.disable_expansion = disable_expansion
+
+    # 🦉 強制純地端模式 toggle
+    force_local = st.toggle(
+        "🦉 強制純地端模式 (展示用)",
+        value=st.session_state.get("force_local", False),
+        help="啟用後將強制忽略 Gemini API 金鑰，完全使用本地運行的 Ollama 與 Gemma3 模型進行推論與生成，用於向老師展示地端運作實力。"
+    )
+    st.session_state.force_local = force_local
+
+    if force_local:
+        st.info("🦉 系統配置：強制純地端 Ollama 模式")
+    elif gemini_key:
         st.success("⚡ 系統配置：API 加速模式 (Chroma 依然本機執行)")
     else:
         st.info("🦉 系統配置：純地端 Ollama 模式")
@@ -366,44 +439,82 @@ if query := st.chat_input("請輸入您想查詢的法規關鍵字或問題... (
         st.markdown(query)
     st.session_state.messages.append({"role": "user", "content": query})
     
-    # 進行 RAG 檢索與回答生成
-    api_key = st.session_state.get("gemini_key", None)
-    with st.spinner("系統正在檢索與思考中..."):
-        try:
-            result = query_rag(query, api_key=api_key)
-            error_msg = None
-        except Exception as e:
-            error_msg = f"⚠️ 發生錯誤：{e}"
-            result = None
-    
-    # 開始處理回答
-    with st.chat_message("assistant", avatar="🦉"):
-        if error_msg:
-            st.markdown(error_msg)
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": error_msg,
-                "detailed_sources": []
-            })
-        else:
-            answer = result["answer"]
-            engine = result.get("engine_type", "地端模式 🦉")
-            st.markdown(answer)
-            st.caption(f"推論引擎：{engine}")
+    # 進行 RAG 檢索與回答生成 (串流模式)
+    # 若開啟強制純地端模式，則強制將 api_key 設為 None，忽略 Gemini 雲端 API
+    if st.session_state.get("force_local", False):
+        api_key = None
+    else:
+        api_key = st.session_state.get("gemini_key", None)
+        if not api_key:
+            api_key = None
             
-            # 顯示原文
-            detailed_sources = result.get("detailed_sources", [])
-            if detailed_sources:
-                with st.expander("🔍 檢索到的法規參考條文原文"):
-                    for s in detailed_sources:
-                        st.markdown(f"""
-                        <div class="chunk-card">
-                            <div class="chunk-source">
-                                <span>📌 {s["title"]}</span>
-                            </div>
-                            <div class="chunk-content">{s["content"]}</div>
+    disable_expansion = st.session_state.get("disable_expansion", True)
+    
+    with st.chat_message("assistant", avatar="🦉"):
+        # 建立一個 placeholder 顯示正在檢索的提示，避免一開始氣泡呈現空白
+        status_placeholder = st.empty()
+        status_placeholder.markdown("🔍 *正在檢索本地知識庫並思考中...*")
+        
+        # 建立 metadata 儲存區與 wrapper 生成器
+        st.session_state.current_stream_meta = {
+            "sources": [],
+            "detailed_sources": [],
+            "engine_type": "地端模式 🦉"
+        }
+        
+        def run_stream():
+            try:
+                has_content = False
+                generator = query_rag_stream(
+                    query, 
+                    api_key=api_key, 
+                    db=st.session_state.db, 
+                    disable_expansion=disable_expansion
+                )
+                for chunk in generator:
+                    if chunk["type"] == "metadata":
+                        st.session_state.current_stream_meta = {
+                            "sources": chunk.get("sources", []),
+                            "detailed_sources": chunk.get("detailed_sources", []),
+                            "engine_type": chunk.get("engine_type", "地端模式 🦉")
+                        }
+                    elif chunk["type"] == "content":
+                        # 收到第一個生成內容時，清空檢索提示字，使回答平滑地逐字出現
+                        if not has_content:
+                            status_placeholder.empty()
+                            has_content = True
+                        yield chunk["content"]
+                    elif chunk["type"] == "error":
+                        if not has_content:
+                            status_placeholder.empty()
+                            has_content = True
+                        yield f"❌ 錯誤：{chunk['content']}"
+            except Exception as e:
+                status_placeholder.empty()
+                yield f"⚠️ 發生錯誤：{e}"
+
+        # 利用 st.write_stream 進行打字機逐字渲染
+        answer = st.write_stream(run_stream())
+        
+        # 獲取最終的 metadata
+        meta = st.session_state.current_stream_meta
+        engine = meta.get("engine_type", "地端模式 🦉")
+        detailed_sources = meta.get("detailed_sources", [])
+        
+        st.caption(f"推論引擎：{engine}")
+        
+        # 顯示原文參考條文
+        if detailed_sources:
+            with st.expander("🔍 檢索到的法規參考條文原文"):
+                for s in detailed_sources:
+                    st.markdown(f"""
+                    <div class="chunk-card">
+                        <div class="chunk-source">
+                            <span>📌 {s["title"]}</span>
                         </div>
-                        """, unsafe_allow_html=True)
+                        <div class="chunk-content">{s["content"]}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             # 將回答寫入 history
             st.session_state.messages.append({

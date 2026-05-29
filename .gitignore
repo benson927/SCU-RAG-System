@@ -24,3 +24,6 @@ dist/
 *.local
 .env.local
 .env.*.local
+
+# 本地臨時腳本
+scratch/

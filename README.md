@@ -17,7 +17,11 @@
 *   🎨 **Neobrutalism (新野獸主義) 視覺設計**：前端介面採用莫蘭迪色系與奶油黃背景，搭配粗邊框、硬陰影與手繪條紋裝飾，打破傳統網頁的呆板感。
 *   🔒 **地端安全隱私保障 (Ollama)**：預設使用純地端 `Ollama` + `Gemma 3` 運行，所有法規 PDF 與提問完全不出網，100% 保障資料隱私。
 *   🤖 **macOS 專屬 Ollama 自動喚醒**：地端模式下，若偵測到本地 Ollama 服務未開啟，系統會自動在 macOS 背景啟動 Ollama 應用程式，免除手動點開的麻煩。
-*   ⚡ **雲端 API 雙模切換 (Gemini)**：側邊欄提供填寫 Gemini API 金鑰欄位。填入後可一鍵切換至 Google Gemini 雲端加速模式，免除地端推論時的卡頓，大幅提升回應速度（Chroma 向量庫依然在本地執行）。
+*   ✍️ **打字機串流與首字延遲優化**：重構問答渲染邏輯，使用 `st.write_stream` 逐字打字渲染；在背景檢索及 LLM 生成首字的等待期（TTFT）自動顯示「🔍 正在檢索本地知識庫並思考中...」狀態，完全擺脫氣泡初始空白的現象。
+*   ⚡ **雙開關切換 (加速模式 & 純地端模式)**：
+    *   **「⚡ 查詢加速模式 (Demo 推薦)」**：開啟後跳過查詢擴展，直接檢索與生成，於地端模式下提供 **秒級回應** 的極速體驗。
+    *   **「🦉 強制純地端模式 (展示用)」**：開啟後將強制忽略 API 金鑰，完全改由本地 Ollama 推理，方便在 Demo 時向老師一鍵展示純地端實力。
+*   🔑 **`.env` 金鑰配置自動載入**：支援讀取本機根目錄 `.env` 檔案中的 `GEMINI_API_KEY`，系統啟動時會自動帶入輸入框並啟用「API 加速模式 ⚡」，省去 Demo 時複製貼上的繁瑣時間。
 *   📚 **自動化向量資料庫建立**：只要將新的 PDF 檔案放進 `data/` 資料夾，RAG 引擎便會在初次運行時自動載入、切片、並將向量存入本地的 `chroma_db/` 資料庫。
 *   📋 **出處回溯與防幻覺**：在系統提示詞中施加強烈約束，若檢索資料中沒有答案，系統會禮貌拒答而非捏造事實。回覆下方會顯示手繪風格的「條文原文卡片」供交叉核對。
 
@@ -95,8 +99,14 @@ python3 -m pip install -r requirements.txt
 4. 確保 Ollama 在背景持續運行 (預設埠口為 `http://localhost:11434`)。
 
 ### 3. 配置 Gemini API 金鑰 (雲端加速模式)
-如果您嫌地端執行速度較慢，可以前往 [Google AI Studio](https://aistudio.google.com/) 免費申請 Gemini API Key。
-* 啟動系統後，在網頁左側的 **「⚙️ 系統配置」** 欄位中直接貼上您的金鑰，系統將自動開啟 API 加速推論！
+如果您想使用雲端 API 加速模式，可前往 [Google AI Studio](https://aistudio.google.com/) 免費申請 Gemini API Key。
+為了在 Demo 演示時**零手動準備**，本系統支援讀取環境變數配置檔：
+1. 在專案根目錄下建立一個 `.env` 檔案。
+2. 在檔案中寫入以下配置（或直接修改已產生的 `.env` 檔案）：
+   ```text
+   GEMINI_API_KEY=您的_GEMINI_API_金鑰
+   ```
+3. 啟動系統時，網頁輸入框將自動載入該金鑰並自動開啟「API 加速模式 ⚡」。在 Demo 現場您亦可直接於網頁左側的 **「⚙️ 系統配置」** 隨時覆蓋貼上。
 
 ---
 
@@ -107,7 +117,7 @@ python3 -m pip install -r requirements.txt
 ```bash
 python3 -m streamlit run app.py
 ```
-* 執行後，瀏覽器會自動開啟 [http://localhost:8501](http://localhost:8501)。
+* 執行後，瀏覽器會自動開啟 [http://localhost:8501](http://localhost:8501)（或視埠口佔用情況開啟 [http://localhost:8502](http://localhost:8502)）。
 
 ### 方案二：執行 RAG 整合測試腳本
 在終端機中直接模擬 RAG 檢索流程（包含 Ollama 喚醒、向量庫搜尋與模型生成）：
@@ -115,10 +125,17 @@ python3 -m streamlit run app.py
 python3 test_rag.py
 ```
 
-### 方案三：執行檢索單元測試
+### 方案三：執行 檢索單元測試
 測試分詞、Boosting 加權、中英跨語言語意增強是否能正常運作：
 ```bash
 python3 test_retrieval.py
+```
+
+### 方案四：執行 45 題地端規章自動評估問答集
+在不消耗 Gemini API 限額的情況下，完全在地端執行 45 個高質量提問（涵蓋各大規章）的 RAG 檢索與回答生成，並自動產出精美的 Markdown 問答報告：
+```bash
+python3 scratch/run_faq_evaluation.py
+# 執行後會在背景呼叫地端模型，並將成果格式化存入 demo_faq_45.md 中
 ```
 
 ---

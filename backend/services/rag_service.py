@@ -65,7 +65,7 @@ llm = ChatOllama(
     temperature=0.0  # 設為 0 以獲得最穩定、不隨機且不產生幻覺的回答
 )
 
-def init_vector_db():
+def init_vector_db(force_rebuild: bool = False):
     """初始化並建立向量資料庫，並在 PDF 檔案有變動時自動重建"""
     # 檢查是否有 PDF 檔案
     pdf_files = sorted([f for f in os.listdir(DATA_DIR) if f.endswith(".pdf")]) if os.path.exists(DATA_DIR) else []
@@ -73,26 +73,27 @@ def init_vector_db():
     # 記錄已加載的 PDF 列表的 meta 檔路徑
     meta_path = os.path.join(CHROMA_DIR, "db_meta.json")
     
-    need_rebuild = False
+    need_rebuild = force_rebuild
     
     # 檢查資料庫是否存在
-    if not os.path.exists(CHROMA_DIR) or len(os.listdir(CHROMA_DIR)) == 0:
-        need_rebuild = True
-    else:
-        # 檢查 meta 檔
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, 'r', encoding='utf-8') as f:
-                    db_meta = json.load(f)
-                loaded_files = db_meta.get("files", [])
-                # 如果檔案列表不一致，需要重建
-                if loaded_files != pdf_files:
-                    need_rebuild = True
-            except Exception:
-                need_rebuild = True
-        else:
+    if not need_rebuild:
+        if not os.path.exists(CHROMA_DIR) or len(os.listdir(CHROMA_DIR)) == 0:
             need_rebuild = True
-            
+        else:
+            # 檢查 meta 檔
+            if os.path.exists(meta_path):
+                try:
+                    with open(meta_path, 'r', encoding='utf-8') as f:
+                        db_meta = json.load(f)
+                    loaded_files = db_meta.get("files", [])
+                    # 如果檔案列表不一致，需要重建
+                    if loaded_files != pdf_files:
+                        need_rebuild = True
+                except Exception:
+                    need_rebuild = True
+            else:
+                need_rebuild = True
+                
     # 如果需要重建且有 PDF 檔案，先刪除舊庫並重建
     if need_rebuild and pdf_files:
         print("🔄 偵測到 PDF 檔案變動，正在重建向量資料庫...")
@@ -136,6 +137,34 @@ def init_vector_db():
         return Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
     
     return None
+
+def check_vector_db_status() -> dict:
+    """檢查向量資料庫的狀態與 PDF 文件是否一致"""
+    pdf_files = sorted([f for f in os.listdir(DATA_DIR) if f.endswith(".pdf")]) if os.path.exists(DATA_DIR) else []
+    
+    if not pdf_files:
+        return {"status": "empty", "files": []}
+        
+    meta_path = os.path.join(CHROMA_DIR, "db_meta.json")
+    
+    # 檢查資料庫目錄是否存在且有內容
+    if not os.path.exists(CHROMA_DIR) or len(os.listdir(CHROMA_DIR)) == 0:
+        return {"status": "outdated", "files": pdf_files}
+        
+    # 檢查 meta 檔
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r', encoding='utf-8') as f:
+                db_meta = json.load(f)
+            loaded_files = db_meta.get("files", [])
+            if loaded_files == pdf_files:
+                return {"status": "ready", "files": pdf_files}
+            else:
+                return {"status": "outdated", "files": pdf_files}
+        except Exception:
+            return {"status": "outdated", "files": pdf_files}
+    else:
+        return {"status": "outdated", "files": pdf_files}
 
 def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
     """利用 LLM 將使用者查詢擴展為多個檢索句"""
@@ -208,21 +237,24 @@ def rrf_fusion(dense_results_list: list, sparse_results_list: list, k: int = 60)
     sorted_docs = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
     return [doc_map[doc_id] for doc_id, score in sorted_docs]
 
-def query_rag(user_query: str, api_key: str = None) -> dict:
-    """查詢 RAG 系統並返回答案與來源 (支援 RRF 融合排序、查詢擴展與 Gemini API 備援)"""
+def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_expansion: bool = False):
+    """查詢 RAG 系統並以生成器方式返回 metadata 與答案字元流 (支援 RRF 融合排序、查詢擴展與 Gemini API 備援)"""
     # 1. 檢索本地向量資料庫（PDF 知識庫）
-    db = init_vector_db()
-    
     if db is None:
-        return {
-            "answer": "抱煙，目前系統知識庫為空。請先在 `data/` 資料夾下放入 PDF 檔案以建立知識庫。",
-            "sources": [],
-            "detailed_sources": [],
-            "engine_type": "未啟動"
+        db = init_vector_db()
+        
+    if db is None:
+        yield {
+            "type": "error",
+            "content": "抱歉，目前系統知識庫為空。請先在 `data/` 資料夾下放入 PDF 檔案以建立知識庫。"
         }
+        return
         
     # 2. 進行查詢擴展
-    queries = generate_expanded_queries(user_query, api_key)
+    if disable_expansion:
+        queries = [user_query]
+    else:
+        queries = generate_expanded_queries(user_query, api_key)
     
     dense_lists = []
     sparse_lists = []
@@ -260,19 +292,21 @@ def query_rag(user_query: str, api_key: str = None) -> dict:
     docs = merged_docs[:4]  # 僅取出前 4 個最相關的片段送給 LLM
     
     if not docs:
-        return {
-            "answer": "抱歉，從現有法規中找不到與您問題相關的解答。",
-            "sources": [],
-            "detailed_sources": [],
-            "engine_type": "地端模式 🦉"
+        yield {
+            "type": "error",
+            "content": "抱歉，從現有法規中找不到與您問題相關的解答。"
         }
+        return
         
     # 載入檔名與真實標題的映射
     mapping_path = os.path.join(os.path.dirname(__file__), 'title_mapping.json')
     title_mapping = {}
     if os.path.exists(mapping_path):
-        with open(mapping_path, 'r', encoding='utf-8') as f:
-            title_mapping = json.load(f)
+        try:
+            with open(mapping_path, 'r', encoding='utf-8') as f:
+                title_mapping = json.load(f)
+        except Exception:
+            pass
             
     # 合併檢索到的 context 文字與資訊來源
     context_parts = []
@@ -299,6 +333,14 @@ def query_rag(user_query: str, api_key: str = None) -> dict:
             
     context_text = "\n\n".join(context_parts)
     
+    # 先傳回檢索到的 metadata 供 UI 預先處理
+    yield {
+        "type": "metadata",
+        "sources": sources,
+        "detailed_sources": detailed_sources,
+        "engine_type": "API 加速模式 ⚡" if api_key else "地端模式 🦉"
+    }
+    
     # 6. 設計地端 RAG Prompt
     system_prompt = (
         "你是一位嚴謹的企業內部知識庫助手。請根據以下提供的 Context（檢索到的法規或文檔內容）回答使用者的問題。\n"
@@ -318,8 +360,7 @@ def query_rag(user_query: str, api_key: str = None) -> dict:
     ])
     
     # 7. 呼叫 LLM 進行生成（包含 Gemini API 與地端 Ollama 備援降級邏輯）
-    answer_text = None
-    engine_type = "地端模式 🦉"
+    use_gemini = False
     
     if api_key:
         try:
@@ -338,22 +379,61 @@ def query_rag(user_query: str, api_key: str = None) -> dict:
             response = model.generate_content(
                 user_query,
                 generation_config={"temperature": 0.0},
-                safety_settings=safety_settings
+                safety_settings=safety_settings,
+                stream=True
             )
-            answer_text = response.text
-            engine_type = "API 加速模式 ⚡"
+            for chunk in response:
+                if chunk.text:
+                    yield {
+                        "type": "content",
+                        "content": chunk.text
+                    }
+            use_gemini = True
         except Exception as e:
-            print(f"⚠️ Gemini API 調用失敗，將自動降級至地端 Ollama: {e}")
+            print(f"⚠️ Gemini API 串流失敗，將自動降級至地端 Ollama: {e}")
+            yield {
+                "type": "metadata",
+                "sources": sources,
+                "detailed_sources": detailed_sources,
+                "engine_type": "地端模式 🦉 (API 降級)"
+            }
             
-    if not answer_text:
-        # 呼叫地端 Ollama
+    if not use_gemini:
+        # 呼叫地端 Ollama 串流
         formatted_prompt = prompt.invoke({"context": context_text, "input": user_query})
-        response = llm.invoke(formatted_prompt)
-        answer_text = response.content
-        engine_type = "地端模式 🦉"
+        for chunk in llm.stream(formatted_prompt):
+            if chunk.content:
+                yield {
+                    "type": "content",
+                    "content": chunk.content
+                }
+
+def query_rag(user_query: str, api_key: str = None, db = None, disable_expansion: bool = False) -> dict:
+    """查詢 RAG 系統並返回答案與來源 (支援 RRF 融合排序、查詢擴展與 Gemini API 備援)"""
+    generator = query_rag_stream(user_query, api_key=api_key, db=db, disable_expansion=disable_expansion)
+    
+    answer_parts = []
+    sources = []
+    detailed_sources = []
+    engine_type = "地端模式 🦉"
+    
+    for item in generator:
+        if item["type"] == "metadata":
+            sources = item.get("sources", [])
+            detailed_sources = item.get("detailed_sources", [])
+            engine_type = item.get("engine_type", "地端模式 🦉")
+        elif item["type"] == "content":
+            answer_parts.append(item["content"])
+        elif item["type"] == "error":
+            return {
+                "answer": item["content"],
+                "sources": [],
+                "detailed_sources": [],
+                "engine_type": "未啟動"
+            }
             
     return {
-        "answer": answer_text,
+        "answer": "".join(answer_parts),
         "sources": sources,
         "detailed_sources": detailed_sources,
         "engine_type": engine_type
