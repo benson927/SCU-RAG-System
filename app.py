@@ -61,7 +61,7 @@ html, body, [class*="css"], .stApp {
     border: 3px solid #2b2b2b !important;
     border-radius: 24px !important;
     color: #2b2b2b !important;
-    padding: 2.2rem 14rem 2.2rem 2.2rem !important; /* 右側保留 14rem 空間放置小怪獸 */
+    padding: 2.2rem 16rem 2.2rem 2.2rem !important; /* 右側保留 16rem 空間放置嚕嚕咪 */
     margin-bottom: 2rem !important;
     box-shadow: 7px 7px 0px #2b2b2b !important; /* 經典硬陰影 */
     position: relative;
@@ -300,10 +300,10 @@ html, body, [class*="css"], .stApp {
     right: 25px;
     top: 50%;
     transform: translateY(-50%) rotate(2deg); /* 微微傾斜，增強手繪感 */
-    width: 145px;
-    height: 145px;
+    width: 180px;
+    height: 180px;
     border: 3px solid #2b2b2b !important;
-    border-radius: 20px !important;
+    border-radius: 24px !important;
     box-shadow: 5px 5px 0px #2b2b2b !important;
     background-color: #ffffff !important;
     padding: 6px;
