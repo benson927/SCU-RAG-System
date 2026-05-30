@@ -51,8 +51,15 @@ function App() {
     setMessages(prev => [...prev, { role: "user", content: userQuery }]);
     setIsLoading(true);
 
+    // 新增一個空的 AI 回答，用來逐字接收串流內容
+    setMessages(prev => [...prev, {
+      role: "assistant",
+      content: "",
+      sources: []
+    }]);
+
     try {
-      const response = await fetch("http://localhost:8000/api/rag", {
+      const response = await fetch("http://localhost:8000/api/rag/stream", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -64,21 +71,95 @@ function App() {
         throw new Error("後端 API 回應錯誤");
       }
 
-      const data = await response.json();
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let partialChunk = "";
       
-      // 新增 AI 回答
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: data.answer,
-        sources: data.sources || []
-      }]);
+      let finalAnswer = "";
+      let finalSources = [];
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        const textChunk = decoder.decode(value, { stream: true });
+        partialChunk += textChunk;
+
+        // 以 "\n\n" 切分 SSE 事件
+        const events = partialChunk.split("\n\n");
+        // 保留最後一個可能不完整的片段
+        partialChunk = events.pop();
+
+        for (const event of events) {
+          if (event.trim().startsWith("data: ")) {
+            const dataStr = event.trim().slice(6);
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.type === "metadata") {
+                finalSources = parsed.sources || [];
+                // 更新 sources 列表，維持打字機滾動
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const lastIdx = updated.length - 1;
+                  updated[lastIdx] = {
+                    ...updated[lastIdx],
+                    sources: finalSources
+                  };
+                  return updated;
+                });
+              } else if (parsed.type === "content") {
+                finalAnswer += parsed.content;
+                // 更新回答內容
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const lastIdx = updated.length - 1;
+                  updated[lastIdx] = {
+                    ...updated[lastIdx],
+                    content: finalAnswer
+                  };
+                  return updated;
+                });
+              } else if (parsed.type === "error") {
+                finalAnswer += `\n❌ 錯誤：${parsed.content}`;
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const lastIdx = updated.length - 1;
+                  updated[lastIdx] = {
+                    ...updated[lastIdx],
+                    content: finalAnswer
+                  };
+                  return updated;
+                });
+              }
+            } catch (e) {
+              console.error("解析串流資料失敗:", e);
+            }
+          }
+        }
+      }
     } catch (error) {
       console.error(error);
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: "❌ 系統推論出錯。請確認：\n1. 後端 FastAPI 服務是否已啟動。\n2. 本地 Ollama 是否運行，且已拉取 `gemma3` 與 `nomic-embed-text` 模型。\n3. `data/` 資料夾下是否有放 PDF 檔案並成功解析。",
-        sources: []
-      }]);
+      // 如果出錯，將錯誤訊息填入原本的空 AI 訊息，或是在其後追加
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        // 如果最後一筆訊息是我們剛才建立的空 AI 訊息，就直接替換它的內容
+        if (updated[lastIdx]?.role === "assistant" && updated[lastIdx]?.content === "") {
+          updated[lastIdx] = {
+            role: "assistant",
+            content: "❌ 系統推論出錯。請確認：\n1. 後端 FastAPI 服務是否已啟動。\n2. 本地 Ollama 是否運行，且已拉取 `gemma3` 與 `nomic-embed-text` 模型。\n3. `data/` 資料夾下是否有放 PDF 檔案並成功解析。",
+            sources: []
+          };
+        } else {
+          // 否則新增一筆錯誤訊息
+          updated.push({
+            role: "assistant",
+            content: "❌ 系統推論中斷。連線可能已異常斷開。",
+            sources: []
+          });
+        }
+        return updated;
+      });
     } finally {
       setIsLoading(false);
     }
@@ -200,7 +281,7 @@ function App() {
             ))}
 
             {/* 思考中載入動畫 */}
-            {isLoading && (
+            {isLoading && (messages.length === 0 || messages[messages.length - 1].role !== "assistant" || messages[messages.length - 1].content === "") && (
               <div className="message-wrapper assistant loading">
                 <div className="avatar">🤖</div>
                 <div className="message-bubble">

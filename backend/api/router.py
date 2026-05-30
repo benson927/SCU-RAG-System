@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List
-from backend.services.rag_service import query_rag
+import json
+from backend.services.rag_service import query_rag, query_rag_stream
 
 router = APIRouter()
 
@@ -23,3 +25,16 @@ async def handle_rag_query(request: RAGQueryRequest):
     except Exception as e:
         # 詳細記錄錯誤，回傳 500
         raise HTTPException(status_code=500, detail=f"地端 RAG 推論失敗: {str(e)}")
+
+@router.post("/rag/stream")
+async def handle_rag_query_stream(request: RAGQueryRequest):
+    def event_generator():
+        try:
+            generator = query_rag_stream(request.query)
+            for chunk in generator:
+                yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            err_msg = {"type": "error", "content": f"地端 RAG 推論失敗: {str(e)}"}
+            yield f"data: {json.dumps(err_msg, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
