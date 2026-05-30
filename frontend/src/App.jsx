@@ -15,6 +15,10 @@ function App() {
   const [showLaws, setShowLaws] = useState(false);
   const [showPDFModal, setShowPDFModal] = useState(false); // 新增 PDF 彈窗狀態控制
   const [slideIndex, setSlideIndex] = useState(0); // 新增當前投影片索引狀態
+  const [showConfig, setShowConfig] = useState(false); // 新增系統配置面板折疊狀態
+  const [geminiKey, setGeminiKey] = useState(localStorage.getItem("geminiKey") || "");
+  const [disableExpansion, setDisableExpansion] = useState(localStorage.getItem("disableExpansion") !== "false"); // 預設為 true
+  const [forceLocal, setForceLocal] = useState(localStorage.getItem("forceLocal") === "true"); // 預設為 false
   const chatEndRef = useRef(null);
 
   // 簡報鍵盤事件監聽 (左右方向鍵換頁，Esc 關閉)
@@ -84,7 +88,11 @@ function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ query: userQuery }),
+        body: JSON.stringify({ 
+          query: userQuery,
+          api_key: forceLocal ? "" : geminiKey,
+          disable_expansion: disableExpansion
+        }),
       });
 
       if (!response.ok) {
@@ -281,21 +289,85 @@ function App() {
             )}
           </div>
 
-          {/* 地端推論引擎狀態 */}
-          <div className="sidebar-card engine-card">
-            <h3>🤖 地端推論引擎</h3>
+          {/* 🤖 推論引擎配置 (可折疊面板) */}
+          <div className="sidebar-card engine-card configurable">
+            <div className="engine-header" onClick={() => setShowConfig(!showConfig)}>
+              <h3>🤖 推論引擎配置</h3>
+              <span className={`arrow ${showConfig ? "open" : ""}`}>{showConfig ? "▲" : "▼"}</span>
+            </div>
+            
+            {/* 運作狀態徽章 */}
+            <div className="current-engine-badge">
+              <span className={`engine-dot ${(!forceLocal && geminiKey.trim()) ? "cloud" : "local"}`}></span>
+              <span>
+                {!forceLocal && geminiKey.trim() ? "雲端加速模式 ⚡" : "純地端模式 🦉"}
+              </span>
+            </div>
+            
+            {showConfig && (
+              <div className="config-form" onClick={(e) => e.stopPropagation()}>
+                <div className="config-input-group">
+                  <label>🔑 Gemini API 金鑰 (選填)</label>
+                  <input 
+                    type="password"
+                    placeholder="請輸入 API Key 以啟用加速..."
+                    value={geminiKey}
+                    onChange={(e) => {
+                      setGeminiKey(e.target.value);
+                      localStorage.setItem("geminiKey", e.target.value);
+                    }}
+                  />
+                </div>
+                
+                <div className="config-toggle-group">
+                  <div className="toggle-item">
+                    <div className="toggle-label-desc">
+                      <strong>⚡ 查詢加速模式</strong>
+                      <span>跳過語意擴充，秒級回應</span>
+                    </div>
+                    <label className="switch">
+                      <input 
+                        type="checkbox"
+                        checked={disableExpansion}
+                        onChange={(e) => {
+                          setDisableExpansion(e.target.checked);
+                          localStorage.setItem("disableExpansion", e.target.checked);
+                        }}
+                      />
+                      <span className="slider round"></span>
+                    </label>
+                  </div>
+                  
+                  <div className="toggle-item">
+                    <div className="toggle-label-desc">
+                      <strong>🦉 純地端模式</strong>
+                      <span>忽略金鑰，完全使用本地模型</span>
+                    </div>
+                    <label className="switch">
+                      <input 
+                        type="checkbox"
+                        checked={forceLocal}
+                        onChange={(e) => {
+                          setForceLocal(e.target.checked);
+                          localStorage.setItem("forceLocal", e.target.checked);
+                        }}
+                      />
+                      <span className="slider round"></span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* 預設小細節 */}
             <div className="engine-info">
               <div className="info-item">
                 <span>生成模型</span>
-                <strong>Gemma 3 (Ollama)</strong>
+                <strong>{!forceLocal && geminiKey.trim() ? "Gemini 2.5 Flash" : "Gemma 3 (Ollama)"}</strong>
               </div>
               <div className="info-item">
                 <span>向量嵌入</span>
                 <strong>Nomic-Embed-Text</strong>
-              </div>
-              <div className="info-item">
-                <span>安全保護</span>
-                <strong className="secure-badge">100% 離線隱私</strong>
               </div>
             </div>
           </div>

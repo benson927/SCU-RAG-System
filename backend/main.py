@@ -1,3 +1,20 @@
+import os
+
+# 嘗試載入本機 .env 檔案中的環境變數 (避免引入額外依賴套件)
+_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_CURRENT_DIR)
+_env_path = os.path.join(_PROJECT_ROOT, ".env")
+if os.path.exists(_env_path):
+    try:
+        with open(_env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    val = v.strip().strip("'").strip('"')
+                    os.environ[k.strip()] = val
+    except Exception:
+        pass
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api.router import router as rag_router

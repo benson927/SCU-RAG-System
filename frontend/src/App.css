@@ -1111,3 +1111,212 @@ body::before {
   box-shadow: 1px 1px 0px var(--ink-black);
 }
 
+/* ==================== 推論引擎配置卡片與開關 (Switch) 樣式 ==================== */
+.engine-card.configurable {
+  cursor: default;
+}
+
+.engine-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.engine-header h3 {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  flex: 1;
+}
+
+.engine-header .arrow {
+  font-size: 0.8rem;
+  color: var(--ink-black);
+  transition: transform 0.2s ease;
+  font-weight: 900;
+}
+
+.engine-header .arrow.open {
+  transform: rotate(180deg);
+}
+
+/* 引擎運行徽章 */
+.current-engine-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: var(--ink-black);
+  background: var(--paper-white);
+  border: 2px solid var(--ink-black);
+  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
+  box-shadow: 2px 2px 0px var(--ink-black);
+  margin-top: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.engine-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-black);
+  display: inline-block;
+}
+
+.engine-dot.local {
+  background-color: var(--sky-blue);
+}
+
+.engine-dot.cloud {
+  background-color: var(--manga-yellow);
+  box-shadow: 0 0 4px var(--manga-yellow);
+}
+
+/* 配置表單 */
+.config-form {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 2px dashed var(--gray-sketch);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  animation: slide-down-fade 0.2s ease-out;
+}
+
+@keyframes slide-down-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.config-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: left;
+}
+
+.config-input-group label {
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: var(--ink-black);
+}
+
+.config-input-group input {
+  background: var(--paper-white);
+  border: 2.5px solid var(--ink-black);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  outline: none;
+  box-shadow: inset 1px 1px 0px rgba(0,0,0,0.1);
+  transition: all 0.1s ease;
+}
+
+.config-input-group input:focus {
+  background: #fffdf5;
+  border-color: var(--sky-blue);
+  box-shadow: inset 1px 1px 0px rgba(0,0,0,0.1), 2px 2px 0px var(--ink-black);
+}
+
+/* Toggle Switch 按鈕組 */
+.config-toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.toggle-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toggle-label-desc {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 0.1rem;
+  flex: 1;
+}
+
+.toggle-label-desc strong {
+  font-size: 0.8rem;
+  font-weight: 900;
+  color: var(--ink-black);
+}
+
+.toggle-label-desc span {
+  font-size: 0.7rem;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+/* 經典 Neobrutalism 風格 Switch 滑塊 */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--paper-white);
+  border: 2.5px solid var(--ink-black);
+  transition: .2s;
+  border-radius: 34px;
+  box-shadow: 1.5px 1.5px 0px var(--ink-black);
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 3px;
+  bottom: 2.5px;
+  background-color: var(--ink-black);
+  transition: .2s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--sunset-pink);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+  background-color: var(--ink-black);
+}
+
+/* 禁用狀態的 Switch */
+input:disabled + .slider {
+  background-color: var(--gray-sketch);
+  cursor: not-allowed;
+}
+
+
