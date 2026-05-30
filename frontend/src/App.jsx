@@ -422,7 +422,7 @@ function App() {
         <div className="pdf-modal-overlay" onClick={() => { setShowPDFModal(false); setSlideIndex(0); }}>
           <div className="pdf-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="pdf-modal-header">
-              <span className="pdf-modal-title">🎓 MIS 期末專案簡報 (Benson組)</span>
+              <span className="pdf-modal-title">🎓 MIS 期末專案簡報</span>
               <button className="pdf-modal-close" onClick={() => { setShowPDFModal(false); setSlideIndex(0); }}>
                 ❌ 關閉簡報
               </button>
