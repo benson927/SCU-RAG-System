@@ -14,7 +14,25 @@ function App() {
   const [backendStatus, setBackendStatus] = useState("checking"); // checking, online, offline
   const [showLaws, setShowLaws] = useState(false);
   const [showPDFModal, setShowPDFModal] = useState(false); // 新增 PDF 彈窗狀態控制
+  const [slideIndex, setSlideIndex] = useState(0); // 新增當前投影片索引狀態
   const chatEndRef = useRef(null);
+
+  // 簡報鍵盤事件監聽 (左右方向鍵換頁，Esc 關閉)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (!showPDFModal) return;
+      if (e.key === "ArrowLeft") {
+        setSlideIndex(prev => Math.max(0, prev - 1));
+      } else if (e.key === "ArrowRight") {
+        setSlideIndex(prev => Math.min(8, prev + 1));
+      } else if (e.key === "Escape") {
+        setShowPDFModal(false);
+        setSlideIndex(0);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showPDFModal]);
 
   // 檢查後端 FastAPI 服務狀態
   const checkStatus = async () => {
@@ -401,22 +419,52 @@ function App() {
 
       {/* 專案簡報 PDF 全螢幕手繪風彈窗 (Modal) */}
       {showPDFModal && (
-        <div className="pdf-modal-overlay" onClick={() => setShowPDFModal(false)}>
+        <div className="pdf-modal-overlay" onClick={() => { setShowPDFModal(false); setSlideIndex(0); }}>
           <div className="pdf-modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="pdf-modal-header">
               <span className="pdf-modal-title">🎓 MIS 期末專案簡報 (Benson組)</span>
-              <button className="pdf-modal-close" onClick={() => setShowPDFModal(false)}>
+              <button className="pdf-modal-close" onClick={() => { setShowPDFModal(false); setSlideIndex(0); }}>
                 ❌ 關閉簡報
               </button>
             </div>
             <div className="pdf-modal-body">
-              <iframe 
-                src="/MIS_Project_Benson_Sure.pdf" 
-                title="Project Presentation"
-                width="100%" 
-                height="100%"
-                style={{ border: "none" }}
-              />
+              <div className="slide-container">
+                <img 
+                  src={`/slides/slide_${slideIndex + 1}.png`} 
+                  alt={`Slide ${slideIndex + 1}`}
+                  className="slide-image"
+                />
+              </div>
+              
+              {/* 投影片手繪風底部控制列 */}
+              <div className="slide-controls">
+                <button 
+                  className="slide-btn" 
+                  onClick={() => setSlideIndex(prev => Math.max(0, prev - 1))}
+                  disabled={slideIndex === 0}
+                >
+                  ◀ 上一頁
+                </button>
+                <div className="slide-page-info">
+                  <span className="slide-page-text">第 {slideIndex + 1} / 9 頁</span>
+                  <div className="slide-dots">
+                    {Array.from({ length: 9 }).map((_, idx) => (
+                      <span 
+                        key={idx} 
+                        className={`slide-dot ${idx === slideIndex ? "active" : ""}`}
+                        onClick={() => setSlideIndex(idx)}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <button 
+                  className="slide-btn" 
+                  onClick={() => setSlideIndex(prev => Math.min(8, prev + 1))}
+                  disabled={slideIndex === 8}
+                >
+                  下一頁 ▶
+                </button>
+              </div>
             </div>
           </div>
         </div>

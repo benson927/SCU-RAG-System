@@ -979,7 +979,135 @@ body::before {
 .pdf-modal-body {
   flex: 1;
   background: var(--gray-sketch);
-  padding: 0.5rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
   position: relative;
+}
+
+/* 投影片容器與圖片 */
+.slide-container {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+  padding: 0.5rem;
+}
+
+.slide-image {
+  max-width: 100%;
+  max-height: 72vh; /* 預留高度給底部控制列 */
+  object-fit: contain;
+  border: 3.5px solid var(--ink-black);
+  border-radius: 12px;
+  box-shadow: 6px 6px 0px var(--ink-black);
+  background: var(--paper-white);
+  animation: slide-fade 0.25s ease-out;
+}
+
+@keyframes slide-fade {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 底部手繪風控制列 */
+.slide-controls {
+  width: 90%;
+  max-width: 800px;
+  background: var(--manga-yellow);
+  border: 3.5px solid var(--ink-black);
+  border-radius: 16px;
+  padding: 0.8rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 5px 5px 0px var(--ink-black);
+  margin-top: 0.8rem;
+  margin-bottom: 0.5rem;
+  z-index: 5;
+}
+
+/* 切換按鈕 */
+.slide-btn {
+  background: var(--paper-white);
+  border: 2.5px solid var(--ink-black);
+  color: var(--ink-black);
+  font-size: 0.9rem;
+  font-weight: 900;
+  padding: 0.5rem 1.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px var(--ink-black);
+  transition: all 0.15s ease;
+}
+
+.slide-btn:hover:not(:disabled) {
+  background: var(--sky-blue);
+  transform: translate(-1.5px, -1.5px);
+  box-shadow: 3.5px 3.5px 0px var(--ink-black);
+}
+
+.slide-btn:active:not(:disabled) {
+  transform: translate(1.5px, 1.5px);
+  box-shadow: 0.5px 0.5px 0px var(--ink-black);
+}
+
+.slide-btn:disabled {
+  background: var(--gray-sketch);
+  border-color: #a4b0be;
+  color: #747d8c;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* 頁碼與小圓點資訊 */
+.slide-page-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.slide-page-text {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: var(--ink-black);
+}
+
+/* 指示小圓點組 */
+.slide-dots {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.slide-dot {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--ink-black);
+  border-radius: 50%;
+  background: var(--paper-white);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.slide-dot:hover {
+  transform: scale(1.2);
+}
+
+.slide-dot.active {
+  background: var(--sunset-pink);
+  transform: scale(1.15);
+  box-shadow: 1px 1px 0px var(--ink-black);
 }
 
