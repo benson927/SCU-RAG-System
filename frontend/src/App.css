@@ -979,7 +979,7 @@ body::before {
 .pdf-modal-body {
   flex: 1;
   background: var(--gray-sketch);
-  padding: 1rem;
+  padding: 0.4rem 1rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -996,12 +996,12 @@ body::before {
   justify-content: center;
   width: 100%;
   overflow: hidden;
-  padding: 0.5rem;
+  padding: 0;
 }
 
 .slide-image {
-  max-width: 100%;
-  max-height: 72vh; /* 預留高度給底部控制列 */
+  max-width: 98%;
+  max-height: 80vh; /* 預留高度給底部控制列，顯著放大簡報圖片 */
   object-fit: contain;
   border: 3.5px solid var(--ink-black);
   border-radius: 12px;
