@@ -115,30 +115,59 @@ python3 -m pip install -r requirements.txt
 
 ## 🚀 啟動與測試
 
-### 方案一：啟動 Streamlit 視覺化檢索介面
-這是最直覺的測試方式，能開啟精美的網頁介面對話：
+### 方案一：啟動前後端分離 (React + FastAPI) 智慧檢索介面 (推薦 🌟)
+本系統已全面重構為更符合現代 Enterprise 架構的前後端分離系統，支援 **前後端 SSE (Server-Sent Events) 打字機串流渲染效果**，響應速度與視覺特效最為流暢：
+
+1. **啟動後端 FastAPI 伺服器**：
+   打開終端機，執行以下命令：
+   ```bash
+   python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+   ```
+   * 後端 API 服務將運行在 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
+
+2. **啟動前端 React (Vite) 網頁程式**：
+   新建一個終端機分頁，進入 `frontend` 目錄並啟動前端：
+   ```bash
+   cd frontend
+   npm install      # 初次使用時安裝前端套件
+   npm run dev      # 啟動 React + Vite 開發伺服器
+   ```
+   * 前端網頁將在瀏覽器中自動開啟，網址為 [http://localhost:5173](http://localhost:5173)。
+
+---
+
+### 方案二：啟動 Streamlit 傳統單體檢索介面
+若您需要展示原先的 Streamlit 傳統網頁介面對話：
 ```bash
 python3 -m streamlit run app.py
 ```
-* 執行後，瀏覽器會自動開啟 [http://localhost:8501](http://localhost:8501)（或視埠口佔用情況開啟 [http://localhost:8502](http://localhost:8502)）。
+* 執行後，瀏覽器會自動開啟 [http://localhost:8501](http://localhost:8501)。
 
-### 方案二：執行 RAG 整合測試腳本
-在終端機中直接模擬 RAG 檢索流程（包含 Ollama 喚醒、向量庫搜尋與模型生成）：
+---
+
+### 方案三：執行 104 題地端規章自動評估問答集
+在不消耗 Gemini API 限額的情況下，完全在地端執行 104 個高質量提問（涵蓋東吳大學 15 大規章）的 RAG 檢索與回答批量生成，並自動產出精美的統計報告：
+```bash
+python3 scratch/run_faq_evaluation.py
+```
+* **產出成果**：
+  * JSON 格式數據：[demo_faq_100.json](file:///Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/demo_faq_100.json)
+  * Markdown 排版評估報告：[demo_faq_100.md](file:///Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/demo_faq_100.md)
+
+---
+
+### 方案四：執行 RAG 整合測試腳本
+在終端機中模擬基礎 RAG 檢索流程（包含 Ollama 喚醒、向量庫搜尋與模型生成）：
 ```bash
 python3 test_rag.py
 ```
 
-### 方案三：執行 檢索單元測試
+---
+
+### 方案五：執行 檢索單元測試
 測試分詞、Boosting 加權、中英跨語言語意增強是否能正常運作：
 ```bash
 python3 test_retrieval.py
-```
-
-### 方案四：執行 45 題地端規章自動評估問答集
-在不消耗 Gemini API 限額的情況下，完全在地端執行 45 個高質量提問（涵蓋各大規章）的 RAG 檢索與回答生成，並自動產出精美的 Markdown 問答報告：
-```bash
-python3 scratch/run_faq_evaluation.py
-# 執行後會在背景呼叫地端模型，並將成果格式化存入 demo_faq_45.md 中
 ```
 
 ---
