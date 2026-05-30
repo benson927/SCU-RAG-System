@@ -1,21 +1,21 @@
 # 🎓 SCU 法規規範智慧檢索系統 (管資期末 - Benson組)
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.35%2B-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![React](https://img.shields.io/badge/React-18.2%2B-blue?logo=react&logoColor=white)](https://react.dev/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Ollama](https://img.shields.io/badge/Ollama-Offline%20LLM-black)](https://ollama.com/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20DB-orange)](https://www.trychroma.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-本專案是一個為東吳大學法規與規範設計的 **地端安全 + 雲端加速雙模 RAG (Retrieval-Augmented Generation) 智慧檢索系統**。
+本專案是一個專為東吳大學法規與規範設計的 **React + FastAPI 前後端分離地端安全與雲端加速雙模 RAG (Retrieval-Augmented Generation) 智慧檢索系統**。
 
-系統具備**嚴格防幻覺機制**，限制大語言模型只能根據您提供的法規 PDF 檔案內容進行回答，杜絕 AI 瞎編。每次回覆均會**嚴謹標註參考出處與檔名**，並提供**原文對照展開**功能，是兼顧個人隱私與檢索準確度的智慧檢索解決方案。
+本系統為專案的**主要展示版本**。具備**嚴格防幻覺機制**，限制大語言模型只能根據您提供的法規 PDF 檔案內容進行回答，杜絕 AI 瞎編。每次回覆均會**嚴謹標註參考出處與檔名**，並提供**原文對照展開**功能，是兼顧個人隱私與檢索準確度的智慧檢索解決方案。
 
 > [!TIP]
 > 📌 **穩定版本還原備忘錄**：若系統在後續開發中遇到不穩定，可隨時於終端機執行 `git checkout milestone-final-release` 還原到此最終成品版。
 
 ---
 
-## 🌟 系統特色與亮點
+## 🌟 系統特色與亮點 (React 主線展示版)
 
 *   🎨 **Neobrutalism (新野獸主義) 滿版視覺美學**：前端介面全新重構為 **100% 滿版響應式版面**，採用奶油黃與晴空藍背景，搭配粗邊框、手繪硬陰影與手繪條紋，融合吉祥物「嚕嚕咪 (SCU RAG Pro)」迎賓 Banner，呈現 state-of-the-art 的日系漫畫風視覺特效。
 *   ✍️ **手繪螢光筆重點標注與 Markdown 渲染**：徹底告別裸露的 Markdown 星號。前端實作了**零套件依賴 Markdown 解析器**，自動將回答中的關鍵分數、期限、金額等標記上 **「暖黃色半透明螢光筆筆觸 + 橘黃色手繪虛線底線」** 且帶有傾斜隨性塗鴉感的視覺效果，並美化了列表項目。
@@ -35,46 +35,69 @@
 
 ---
 
-## 🏗️ 系統技術架構
+## 🏗️ 系統技術架構與數據流
 
-本系統採用經典的 **RAG (檢索增強生成)** 工作流：
+本系統採用經典的前後端分離 RAG (檢索增強生成) 工作流，React 前端與 FastAPI 後端透過 SSE 進行串流通訊：
 
 ```mermaid
-graph TD
-    A[使用者輸入提問] --> B{是否提供 Gemini API Key?}
-    B -- 是 --> C[啟用 Gemini 雲端模型加速]
-    B -- 否 --> D[啟用 Ollama 本地 Gemma3 推論]
-    
-    A --> E[多查詢語意擴充 Query Expansion]
-    E --> F[Chroma 本地向量資料庫檢索]
-    F --> G[篩選與排序相關法規文本段落]
-    
-    C & D --> H[將提問與檢索段落放入 RAG 嚴格提示詞範本]
-    G --> H
-    H --> I[生成回答 + 標註法規出處檔名]
-    I --> J[於前端 UI 渲染回答與「法規參考條文原文卡片」]
+sequenceDiagram
+    actor User as 使用者
+    participant FE as React 前端 UI (Port 5173)
+    participant BE as FastAPI 後端 API (Port 8000)
+    participant DB as Chroma 向量資料庫
+    participant LLM as 本地 Ollama (Gemma3) / 雲端 Gemini
+
+    User->>FE: 輸入法規提問 (例如請假限制)
+    FE->>BE: 發送 POST 請求 (帶入提問、force_local 及 API 金鑰)
+    BE->>BE: 進行多查詢語意擴充 (Query Expansion)
+    BE->>DB: 檢索法規 Vector Embeddings
+    DB-->>BE: 回傳最相關的法規本文段落
+    BE->>BE: 將檢索結果與提問套入嚴格防幻覺提示詞範本
+    BE->>LLM: 串流請求生成回答 (依配置選用地端 Gemma 3 或雲端 Gemini)
+    LLM-->>BE: 串流回傳生成文字
+    BE-->>FE: SSE (Server-Sent Events) 打字機串流回傳
+    FE->>FE: 零套件 Markdown 解析器渲染重點標注 (套用螢光筆與手繪底線)
+    FE-->>User: 顯示暖黃螢光筆重點回答 + 原文出處標籤卡片
 ```
 
 ---
 
 ## 📂 專案目錄結構
 
+本專案已全面結構化為前後端分離架構，各模組職責清晰分明：
+
 ```text
-├── app.py                  # Streamlit 網頁主程式 (Neobrutalism UI 設計)
-├── requirements.txt         # 系統 Python 套件依賴清單
-├── test_rag.py              # RAG 整合端到端測試指令
-├── test_retrieval.py        # 檢索引擎與分詞翻譯單元測試指令
+SCU-RAG-System/
+├── frontend/                # React (Vite) 前端網頁專案
+│   ├── src/
+│   │   ├── App.jsx          # 主對話介面邏輯 (SSE 接收與手繪 Markdown 解析)
+│   │   ├── App.css          # Neobrutalism 滿版樣式與手寫螢光筆畫重點特效
+│   │   └── main.jsx
+│   ├── public/
+│   │   ├── slides/          # 專案簡報轉換後的高品質 PNG 投影片
+│   │   └── Smart_SCU_Law_Navigator＿1.pdf  # 最新版專案簡報 PDF 原始檔
+│   └── package.json
 │
-├── backend/                 # 後端模組資料夾
-│   ├── main.py              # 後端 API 主入口
-│   ├── requirements.txt     # 後端依賴
+├── backend/                 # FastAPI 後端 API 服務
+│   ├── main.py              # 後端 API 主入口 (CORS 設定與伺服器啟動)
+│   ├── api/
+│   │   └── router.py        # API 路由與請求驗證 (封堵本地 API Fallback 邏輯漏洞)
 │   └── services/
-│       ├── rag_service.py   # RAG 核心檢索與生成邏輯 (Chroma + Ollama/Gemini)
+│       ├── rag_service.py   # RAG 核心檢索、多查詢擴充與模型串流生成服務
 │       └── title_mapping.json  # 檔案名稱與法規名稱對照表
 │
-├── chroma_db/               # 本地向量資料庫目錄 (儲存向量化後的法規數據)
 ├── data/                    # 原始法規 PDF 存放處 (在此放入 PDF 以自動建檔)
-└── frontend/                # React + Vite 前端專案目錄 (備用進階 Web UI)
+│   └── faq_cache.json       # 1,179 筆自訓練口語 FAQ 加載緩存
+│
+├── chroma_db/               # 本地 Chroma 向量資料庫目錄 (儲存向量化後的法規數據)
+│
+├── scratch/                 # 測試、評估與輔助腳本
+│   ├── run_faq_evaluation.py # 104 題地端規章自動評估問答集
+│   └── convert_pdf_to_images.py  # 簡報 PDF 轉換為幻燈片 PNG 腳本
+│
+├── requirements.txt         # 系統 Python 套件依賴清單
+├── app.py                   # 傳統單體 Streamlit 檢索介面 (備用)
+└── README.md                # 專案說明文件 (本檔案)
 ```
 
 ---
@@ -86,7 +109,7 @@ graph TD
 cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
 ```
 
-### 1. 安裝 Python 套件依賴
+### 1. 安裝 Python 後端套件依賴
 建議使用 Python 3.10 以上版本，執行以下指令安裝所需套件：
 ```bash
 python3 -m pip install -r requirements.txt
@@ -118,31 +141,31 @@ python3 -m pip install -r requirements.txt
 
 ---
 
-## 🚀 啟動與測試
+## 🚀 啟動與展示指引
 
-### 方案一：啟動前後端分離 (React + FastAPI) 智慧檢索介面 (推薦 🌟)
+### 🌟 方案一：啟動前後端分離 (React + FastAPI) 智慧檢索介面 (推薦展示主線)
 本系統已全面重構為更符合現代 Enterprise 架構的前後端分離系統，支援 **前後端 SSE (Server-Sent Events) 打字機串流渲染效果**，響應速度與視覺特效最為流暢：
 
-1. **啟動後端 FastAPI 伺服器**：
-   打開終端機，執行以下命令：
-   ```bash
-   cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
-   python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-   ```
-   * 後端 API 服務將運行在 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
+#### 步驟 1：啟動後端 FastAPI 伺服器
+打開終端機，執行以下命令：
+```bash
+cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
+python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+```
+* 後端 API 服務將運行在 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
 
-2. **啟動前端 React (Vite) 網頁程式**：
-   新建一個終端機分頁，進入前端專案目錄並啟動前端：
-   ```bash
-   cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/frontend"
-   npm install      # 初次使用時安裝前端套件
-   npm run dev      # 啟動 React + Vite 開發伺服器
-   ```
-   * 前端網頁將在瀏覽器中自動開啟，網址為 [http://localhost:5173](http://localhost:5173)。
+#### 步驟 2：啟動前端 React (Vite) 網頁程式
+新建一個終端機分頁，進入前端專案目錄並啟動前端：
+```bash
+cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/frontend"
+npm install      # 初次使用時安裝前端套件
+npm run dev      # 啟動 React + Vite 開發伺服器
+```
+* 前端網頁將在瀏覽器中自動開啟，網址為 [http://localhost:5173](http://localhost:5173) (或 Vite 自動指派的 Port)。
 
 ---
 
-### 方案二：啟動 Streamlit 傳統單體檢索介面
+### ⚠️ 方案二：啟動 Streamlit 傳統單體檢索介面 (僅供備用)
 若您需要展示原先的 Streamlit 傳統網頁介面對話，請打開終端機並執行：
 ```bash
 cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
@@ -152,7 +175,7 @@ python3 -m streamlit run app.py
 
 ---
 
-### 方案三：執行 104 題地端規章自動評估問答集
+### 🎯 方案三：執行 104 題地端規章自動評估問答集
 在不消耗 Gemini API 限額的情況下，完全在地端批量測試 RAG 檢索與回答：
 ```bash
 cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
@@ -164,15 +187,15 @@ python3 scratch/run_faq_evaluation.py
 
 ---
 
-### 方案四：執行 RAG 整合測試腳本
+### 🧪 其他測試腳本
+
+#### 1. 執行 RAG 整合測試腳本
 在終端機中模擬基礎 RAG 檢索流程（包含 Ollama 喚醒、向量庫搜尋與模型生成）：
 ```bash
 python3 test_rag.py
 ```
 
----
-
-### 方案五：執行 檢索單元測試
+#### 2. 執行檢索單元測試
 測試分詞、Boosting 加權、中英跨語言語意增強是否能正常運作：
 ```bash
 python3 test_retrieval.py
