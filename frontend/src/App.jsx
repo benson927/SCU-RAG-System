@@ -140,11 +140,9 @@ function App() {
       }
     } catch (error) {
       console.error(error);
-      // 如果出錯，將錯誤訊息填入原本的空 AI 訊息，或是在其後追加
       setMessages(prev => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
-        // 如果最後一筆訊息是我們剛才建立的空 AI 訊息，就直接替換它的內容
         if (updated[lastIdx]?.role === "assistant" && updated[lastIdx]?.content === "") {
           updated[lastIdx] = {
             role: "assistant",
@@ -152,7 +150,6 @@ function App() {
             sources: []
           };
         } else {
-          // 否則新增一筆錯誤訊息
           updated.push({
             role: "assistant",
             content: "❌ 系統推論中斷。連線可能已異常斷開。",
@@ -178,13 +175,6 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* 霓虹動態背景光球 */}
-      <div className="aurora-bg">
-        <div className="blob blob-purple"></div>
-        <div className="blob blob-pink"></div>
-        <div className="blob blob-blue"></div>
-      </div>
-
       {/* 頂部導航欄 */}
       <header className="app-header">
         <div className="header-left">
@@ -297,9 +287,15 @@ function App() {
             <p>AI 回答時，將**僅依據**您所提供的 PDF 上下文。若無相關資訊，系統會主動回報查無解答，避免模型產生胡言亂語的「幻覺」。</p>
           </div>
 
-          <button className="clear-history-btn" onClick={clearChat}>
-            🗑️ 清除對話紀錄
-          </button>
+          {/* 側邊欄行動按鈕組 */}
+          <div className="sidebar-actions">
+            <button className="view-presentation-btn" onClick={() => window.open("/MIS_Project_Benson_Sure.pdf", "_blank")}>
+              🌐 開啟專案簡報
+            </button>
+            <button className="clear-history-btn" onClick={clearChat}>
+              🗑️ 清除對話紀錄
+            </button>
+          </div>
         </aside>
 
         {/* 右側聊天室 */}

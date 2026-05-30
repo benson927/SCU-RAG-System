@@ -867,3 +867,33 @@ body::before {
   box-shadow: 2px 2px 0px var(--ink-black);
   transform: rotate(-1.5deg);
 }
+
+/* ==================== 側邊欄按鈕容器與簡報按鈕樣式 ==================== */
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-top: auto;
+}
+
+.view-presentation-btn {
+  background: var(--mint-green); /* 與清除歷史的紅色形成鮮明撞色 */
+  border: 3px solid var(--ink-black);
+  color: var(--ink-black);
+  padding: 0.8rem;
+  border-radius: 12px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: var(--sketch-shadow);
+  transition: all 0.1s;
+}
+
+.view-presentation-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: var(--sketch-shadow-hover);
+}
+
+.view-presentation-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--sketch-shadow-active);
+}
