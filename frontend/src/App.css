@@ -56,8 +56,8 @@ body::before {
   flex-direction: column;
   height: 100vh;
   box-sizing: border-box;
-  max-width: 1300px;
-  margin: 0 auto;
+  max-width: 100%;
+  margin: 0;
   padding: 1.2rem;
   position: relative;
 }
