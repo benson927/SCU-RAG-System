@@ -897,3 +897,89 @@ body::before {
   transform: translate(2px, 2px);
   box-shadow: var(--sketch-shadow-active);
 }
+
+/* ==================== 專案簡報 PDF 全螢幕手繪風彈窗 (Modal) 樣式 ==================== */
+.pdf-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(30, 37, 43, 0.75);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.pdf-modal-content {
+  background: var(--paper-white);
+  border: 4px solid var(--ink-black);
+  border-radius: 24px;
+  width: 92%;
+  height: 88%;
+  max-width: 1200px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 10px 10px 0px var(--ink-black);
+  transform: rotate(-0.5deg);
+  overflow: hidden;
+  animation: modal-zoom 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes modal-zoom {
+  0% {
+    transform: scale(0.9) rotate(-1.5deg);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1) rotate(-0.5deg);
+    opacity: 1;
+  }
+}
+
+.pdf-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1.5rem;
+  background: var(--manga-yellow);
+  border-bottom: 3.5px solid var(--ink-black);
+}
+
+.pdf-modal-title {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: var(--ink-black);
+}
+
+.pdf-modal-close {
+  background: #ff7675;
+  border: 2.5px solid var(--ink-black);
+  color: var(--ink-black);
+  font-weight: 900;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0px var(--ink-black);
+  transition: all 0.1s;
+}
+
+.pdf-modal-close:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0px var(--ink-black);
+}
+
+.pdf-modal-close:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0px var(--ink-black);
+}
+
+.pdf-modal-body {
+  flex: 1;
+  background: var(--gray-sketch);
+  padding: 0.5rem;
+  position: relative;
+}
+

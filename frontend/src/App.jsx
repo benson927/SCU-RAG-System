@@ -13,6 +13,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [backendStatus, setBackendStatus] = useState("checking"); // checking, online, offline
   const [showLaws, setShowLaws] = useState(false);
+  const [showPDFModal, setShowPDFModal] = useState(false); // 新增 PDF 彈窗狀態控制
   const chatEndRef = useRef(null);
 
   // 檢查後端 FastAPI 服務狀態
@@ -289,7 +290,7 @@ function App() {
 
           {/* 側邊欄行動按鈕組 */}
           <div className="sidebar-actions">
-            <button className="view-presentation-btn" onClick={() => window.open("/MIS_Project_Benson_Sure.pdf", "_blank")}>
+            <button className="view-presentation-btn" onClick={() => setShowPDFModal(true)}>
               🌐 開啟專案簡報
             </button>
             <button className="clear-history-btn" onClick={clearChat}>
@@ -397,6 +398,29 @@ function App() {
           </form>
         </main>
       </div>
+
+      {/* 專案簡報 PDF 全螢幕手繪風彈窗 (Modal) */}
+      {showPDFModal && (
+        <div className="pdf-modal-overlay" onClick={() => setShowPDFModal(false)}>
+          <div className="pdf-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="pdf-modal-header">
+              <span className="pdf-modal-title">🎓 MIS 期末專案簡報 (Benson組)</span>
+              <button className="pdf-modal-close" onClick={() => setShowPDFModal(false)}>
+                ❌ 關閉簡報
+              </button>
+            </div>
+            <div className="pdf-modal-body">
+              <iframe 
+                src="/MIS_Project_Benson_Sure.pdf" 
+                title="Project Presentation"
+                width="100%" 
+                height="100%"
+                style={{ border: "none" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
