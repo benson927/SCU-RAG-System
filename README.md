@@ -121,14 +121,15 @@ python3 -m pip install -r requirements.txt
 1. **啟動後端 FastAPI 伺服器**：
    打開終端機，執行以下命令：
    ```bash
+   cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
    python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
    ```
    * 後端 API 服務將運行在 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
 
 2. **啟動前端 React (Vite) 網頁程式**：
-   新建一個終端機分頁，進入 `frontend` 目錄並啟動前端：
+   新建一個終端機分頁，進入前端專案目錄並啟動前端：
    ```bash
-   cd frontend
+   cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/frontend"
    npm install      # 初次使用時安裝前端套件
    npm run dev      # 啟動 React + Vite 開發伺服器
    ```
@@ -137,8 +138,9 @@ python3 -m pip install -r requirements.txt
 ---
 
 ### 方案二：啟動 Streamlit 傳統單體檢索介面
-若您需要展示原先的 Streamlit 傳統網頁介面對話：
+若您需要展示原先的 Streamlit 傳統網頁介面對話，請打開終端機並執行：
 ```bash
+cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
 python3 -m streamlit run app.py
 ```
 * 執行後，瀏覽器會自動開啟 [http://localhost:8501](http://localhost:8501)。
@@ -146,8 +148,9 @@ python3 -m streamlit run app.py
 ---
 
 ### 方案三：執行 104 題地端規章自動評估問答集
-在不消耗 Gemini API 限額的情況下，完全在地端執行 104 個高質量提問（涵蓋東吳大學 15 大規章）的 RAG 檢索與回答批量生成，並自動產出精美的統計報告：
+在不消耗 Gemini API 限額的情況下，完全在地端批量測試 RAG 檢索與回答：
 ```bash
+cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
 python3 scratch/run_faq_evaluation.py
 ```
 * **產出成果**：
