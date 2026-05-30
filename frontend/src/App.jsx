@@ -1,6 +1,33 @@
 import React, { useState, useEffect, useRef } from "react";
 import "./App.css";
 
+// 輕量手繪風 Markdown 解析器 (零套件依賴，實現螢光筆劃重點)
+const renderMarkdown = (text) => {
+  if (!text) return "";
+  
+  // 1. 安全逸出 HTML 特殊字元
+  let html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+    
+  // 2. 粗體替換為手繪螢光筆 strong 標記
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="manga-highlight">$1</strong>');
+  
+  // 3. 按行處理列表與段落
+  const lines = html.split("\n");
+  const processedLines = lines.map(line => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
+      const content = trimmed.substring(2);
+      return `<li class="manga-li">${content}</li>`;
+    }
+    return `<p class="manga-p">${line}</p>`;
+  });
+  
+  return processedLines.join("");
+};
+
 function App() {
   const [messages, setMessages] = useState([
     {
@@ -421,11 +448,10 @@ function App() {
                     {msg.role === "user" ? "👤" : "🤖"}
                   </div>
                   <div className="message-bubble">
-                    <div className="message-content">
-                      {msg.content.split("\n").map((line, i) => (
-                        <p key={i}>{line}</p>
-                      ))}
-                    </div>
+                    <div 
+                      className="message-content"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                    />
                     
                     {/* 來源卡片 */}
                     {msg.sources && msg.sources.length > 0 && (
