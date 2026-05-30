@@ -117,8 +117,9 @@ function App() {
         },
         body: JSON.stringify({ 
           query: userQuery,
-          api_key: forceLocal ? "" : geminiKey,
-          disable_expansion: disableExpansion
+          api_key: geminiKey,
+          disable_expansion: disableExpansion,
+          force_local: forceLocal
         }),
       });
 

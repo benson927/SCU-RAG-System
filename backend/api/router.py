@@ -12,6 +12,7 @@ class RAGQueryRequest(BaseModel):
     query: str = Field(..., description="要向知識庫查詢的問題或關鍵字")
     api_key: str = Field(default=None, description="Gemini API Key (選填)")
     disable_expansion: bool = Field(default=True, description="是否停用語意擴充加速 (預設 True)")
+    force_local: bool = Field(default=False, description="是否強制純地端模式 (預設 False)")
 
 class RAGQueryResponse(BaseModel):
     answer: str = Field(..., description="RAG 系統產生的回答")
@@ -20,11 +21,14 @@ class RAGQueryResponse(BaseModel):
 @router.post("/rag", response_model=RAGQueryResponse)
 async def handle_rag_query(request: RAGQueryRequest):
     try:
-        api_key = request.api_key
-        if not api_key or not api_key.strip():
-            api_key = os.environ.get("GEMINI_API_KEY", None)
+        if request.force_local:
+            api_key = None
+        else:
+            api_key = request.api_key
             if not api_key or not api_key.strip():
-                api_key = None
+                api_key = os.environ.get("GEMINI_API_KEY", None)
+                if not api_key or not api_key.strip():
+                    api_key = None
                 
         result = query_rag(
             request.query, 
@@ -42,11 +46,14 @@ async def handle_rag_query(request: RAGQueryRequest):
 async def handle_rag_query_stream(request: RAGQueryRequest):
     def event_generator():
         try:
-            api_key = request.api_key
-            if not api_key or not api_key.strip():
-                api_key = os.environ.get("GEMINI_API_KEY", None)
+            if request.force_local:
+                api_key = None
+            else:
+                api_key = request.api_key
                 if not api_key or not api_key.strip():
-                    api_key = None
+                    api_key = os.environ.get("GEMINI_API_KEY", None)
+                    if not api_key or not api_key.strip():
+                        api_key = None
                     
             generator = query_rag_stream(
                 request.query, 
