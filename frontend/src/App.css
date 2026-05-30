@@ -186,6 +186,8 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .sidebar-card {
@@ -227,6 +229,147 @@ body::before {
 
 .info-card {
   background: var(--manga-yellow);
+}
+
+/* ==================== 側邊欄優化元件樣式 ==================== */
+
+/* 知識庫狀態卡片 */
+.laws-card {
+  background: var(--paper-white);
+}
+
+.laws-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.laws-header h3 {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+  flex: 1;
+}
+
+.laws-header .arrow {
+  font-size: 0.8rem;
+  color: var(--ink-black);
+  transition: transform 0.2s ease;
+  font-weight: 900;
+}
+
+/* 綠色就緒徽章 */
+.db-ready-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  font-weight: 900;
+  color: #0f5132;
+  background: #f0fdf4;
+  border: 2px solid var(--ink-black);
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+  box-shadow: 2px 2px 0px var(--ink-black);
+  margin-top: 0.8rem;
+  margin-bottom: 0.4rem;
+}
+
+/* 綠色呼吸燈 */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background-color: var(--mint-green);
+  border: 1.5px solid var(--ink-black);
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 0 0 rgba(85, 239, 196, 0.7);
+  animation: pulse-green 2s infinite;
+}
+
+@keyframes pulse-green {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(85, 239, 196, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(85, 239, 196, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(85, 239, 196, 0);
+  }
+}
+
+/* 展開法規列表 */
+.law-list {
+  margin: 0.8rem 0 0 0;
+  padding-left: 1.1rem;
+  list-style-type: decimal;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #4b5563;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  text-align: left;
+  border-top: 2px dashed var(--gray-sketch);
+  padding-top: 0.8rem;
+}
+
+.law-list li {
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+/* 地端推論引擎卡片 */
+.engine-card {
+  background: #f1f8ff; /* 淡藍手繪紙風格 */
+}
+
+.engine-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  border-bottom: 1.5px dashed rgba(30, 37, 43, 0.1);
+  padding-bottom: 0.4rem;
+}
+
+.info-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.info-item span {
+  color: #6b7280;
+  font-weight: 800;
+}
+
+.info-item strong {
+  color: var(--ink-black);
+  font-weight: 900;
+}
+
+/* 離線保護標籤 */
+.secure-badge {
+  background: var(--sunset-pink);
+  color: var(--ink-black);
+  border: 2px solid var(--ink-black);
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  box-shadow: 1.5px 1.5px 0px var(--ink-black);
 }
 
 /* 手繪步驟清單 */

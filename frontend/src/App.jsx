@@ -12,6 +12,7 @@ function App() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [backendStatus, setBackendStatus] = useState("checking"); // checking, online, offline
+  const [showLaws, setShowLaws] = useState(false);
   const chatEndRef = useRef(null);
 
   // 檢查後端 FastAPI 服務狀態
@@ -210,6 +211,7 @@ function App() {
       <div className="main-layout">
         {/* 左側面板 - 說明與指南 */}
         <aside className="sidebar">
+          {/* 系統運行說明 */}
           <div className="sidebar-card">
             <h3>⚙️ 系統運行說明</h3>
             <p>本 RAG 系統完全在您的**本機端**執行，保護企業資料隱私不外洩。</p>
@@ -238,6 +240,58 @@ function App() {
             </div>
           </div>
 
+          {/* 知識庫狀態與法規列表 */}
+          <div className="sidebar-card laws-card">
+            <div className="laws-header" onClick={() => setShowLaws(!showLaws)}>
+              <h3>📚 知識庫狀態</h3>
+              <span className={`arrow ${showLaws ? "open" : ""}`}>{showLaws ? "▲" : "▼"}</span>
+            </div>
+            <div className="db-ready-badge">
+              <span className="pulse-dot"></span>
+              <span>15 份東吳法規已載入</span>
+            </div>
+            
+            {showLaws && (
+              <ul className="law-list">
+                <li>東吳大學學生請假規則</li>
+                <li>東吳大學學生工讀助學實施辦法</li>
+                <li>東吳大學校外學生宿舍輔導及管理辦法</li>
+                <li>東吳大學學生清寒急難救助金實施辦法</li>
+                <li>東吳大學學生社團組織及活動辦法</li>
+                <li>東吳大學優秀應屆畢業生選拔及獎勵辦法</li>
+                <li>東吳大學研究生獎助學金辦法</li>
+                <li>東吳大學碩、博士班優秀新生獎勵辦法</li>
+                <li>東吳大學學生銷過實施辦法</li>
+                <li>東吳大學學生會會費代收辦法</li>
+                <li>東吳大學端木愷校長獎學金實施要點</li>
+                <li>東吳大學學生獎懲委員會組織章程</li>
+                <li>東吳大學獎助學金暨優秀學生甄選委員會組織章程</li>
+                <li>東吳大學獎助學金申請審核辦法</li>
+                <li>東吳大學優良導師獎勵辦法</li>
+              </ul>
+            )}
+          </div>
+
+          {/* 地端推論引擎狀態 */}
+          <div className="sidebar-card engine-card">
+            <h3>🤖 地端推論引擎</h3>
+            <div className="engine-info">
+              <div className="info-item">
+                <span>生成模型</span>
+                <strong>Gemma 3 (Ollama)</strong>
+              </div>
+              <div className="info-item">
+                <span>向量嵌入</span>
+                <strong>Nomic-Embed-Text</strong>
+              </div>
+              <div className="info-item">
+                <span>安全保護</span>
+                <strong className="secure-badge">100% 離線隱私</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* 嚴謹度提示 */}
           <div className="sidebar-card info-card">
             <h3>⚠️ 嚴謹度提示</h3>
             <p>AI 回答時，將**僅依據**您所提供的 PDF 上下文。若無相關資訊，系統會主動回報查無解答，避免模型產生胡言亂語的「幻覺」。</p>
