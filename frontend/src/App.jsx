@@ -305,34 +305,58 @@ function App() {
         {/* 右側聊天室 */}
         <main className="chat-container">
           <div className="chat-messages">
-            {messages.map((msg, index) => (
-              <div key={index} className={`message-wrapper ${msg.role}`}>
-                <div className="avatar">
-                  {msg.role === "user" ? "👤" : "🤖"}
-                </div>
-                <div className="message-bubble">
-                  <div className="message-content">
-                    {msg.content.split("\n").map((line, i) => (
-                      <p key={i}>{line}</p>
-                    ))}
+            {messages.length <= 1 && !isLoading ? (
+              <div className="welcome-banner">
+                <div className="welcome-content">
+                  <span className="welcome-badge">✨ 100% 本地安全檢索 + 拒絕 AI 幻覺</span>
+                  <h2>東吳規章 <span className="highlight-text">智慧導航員</span> ✏️</h2>
+                  <p className="welcome-desc">
+                    我們重新定義了校園法規的檢索體驗。透過<strong>無網本地運作</strong>捍衛隱私，以及<strong>條文原文秒級對照</strong>阻絕幻覺。在這裡，規章不再是冷冰冰的條文，而是有憑有據的即時智慧。
+                  </p>
+                  <div className="welcome-tips">
+                    💡 試試提問這些東吳規章問題：
+                    <ul>
+                      <li>期末考請假期限是多久？要送去哪裡審核？</li>
+                      <li>拿到端木愷校長獎學金後，下學期學業成績平均要幾分才能續領？</li>
+                      <li>宿舍輔導或管理人員在未獲得學生同意下，可以隨意進入寢室檢查嗎？</li>
+                    </ul>
                   </div>
-                  
-                  {/* 來源卡片 */}
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="sources-section">
-                      <div className="sources-title">📌 參考文獻出處：</div>
-                      <div className="sources-list">
-                        {msg.sources.map((src, sIdx) => (
-                          <span key={sIdx} className="source-tag">
-                            📄 {src}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                </div>
+                <div className="welcome-mascot">
+                  <img src="/doodle_monster.png" alt="Moomin Mascot" />
+                  <span className="mascot-tag">SCU RAG Pro</span>
                 </div>
               </div>
-            ))}
+            ) : (
+              messages.map((msg, index) => (
+                <div key={index} className={`message-wrapper ${msg.role}`}>
+                  <div className="avatar">
+                    {msg.role === "user" ? "👤" : "🤖"}
+                  </div>
+                  <div className="message-bubble">
+                    <div className="message-content">
+                      {msg.content.split("\n").map((line, i) => (
+                        <p key={i}>{line}</p>
+                      ))}
+                    </div>
+                    
+                    {/* 來源卡片 */}
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="sources-section">
+                        <div className="sources-title">📌 參考文獻出處：</div>
+                        <div className="sources-list">
+                          {msg.sources.map((src, sIdx) => (
+                            <span key={sIdx} className="source-tag">
+                              📄 {src}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
 
             {/* 思考中載入動畫 */}
             {isLoading && (messages.length === 0 || messages[messages.length - 1].role !== "assistant" || messages[messages.length - 1].content === "") && (
