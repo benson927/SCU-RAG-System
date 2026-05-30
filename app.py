@@ -451,7 +451,7 @@ with st.sidebar:
     # 第三段：專案簡報與清除歷史對話按鈕
     st.markdown("---")
     st.markdown("""
-    <a href="/app/static/MIS_Project_Benson_Sure.pdf" target="_blank" style="text-decoration: none;">
+    <a href="/app/static/Smart_SCU_Law_Navigator.pdf" target="_blank" style="text-decoration: none;">
         <div style="text-align: center; border: 2.5px solid #2b2b2b; box-shadow: 3.5px 3.5px 0px #2b2b2b;
                     background-color: #ffe3e3; border-radius: 12px; color: #2b2b2b; font-weight: 700;
                     padding: 0.5rem 1rem; margin-bottom: 0.8rem;
