@@ -6,6 +6,10 @@
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20DB-orange)](https://www.trychroma.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+<p align="center">
+  <img src="images/系統頁面.PNG" alt="SCU RAG System 系統首頁" width="100%" />
+</p>
+
 本專案是一個專為東吳大學法規與規範設計的 **React + FastAPI 前後端分離地端安全與雲端加速雙模 RAG (Retrieval-Augmented Generation) 智慧檢索系統**。
 
 本系統為專案的**主要展示版本**。具備**嚴格防幻覺機制**，限制大語言模型只能根據您提供的法規 PDF 檔案內容進行回答，杜絕 AI 瞎編。每次回覆均會**嚴謹標註參考出處與檔名**，並提供**原文對照展開**功能，是兼顧個人隱私與檢索準確度的智慧檢索解決方案。
@@ -23,9 +27,13 @@
     *   預設收合以保持側邊欄簡潔，點選即可滑出。支援手動配置 `Gemini API Key`、`⚡ 查詢加速模式` 與 `🦉 純地端模式` 開關。
     *   **LocalStorage 自動快取**：輸入的 Key 與開關狀態會快取在瀏覽器中，Demo 重刷免重貼。
     *   **動態狀態綁定**：啟用加速時，徽章自動變更為 `雲端加速模式 ⚡`，生成模型亦動態由 `Gemma 3 (Ollama)` 切換為 `Gemini 2.5 Flash`。
+    *   **雲端 API 加速模式回答展示**：
+        <img src="images/API加速回答.PNG" alt="API加速模式回答畫面" width="80%" />
 *   🔒 **地端安全隱私保障 & 完全隔離 (Ollama)**：系統預設使用純本地 `Ollama` + `Gemma 3` + `nomic-embed-text` 運作，PDF 資料與提問 100% 離線。
     *   **徹底拒絕 API Fallback 邏輯漏洞**：前端發送 `force_local: true` 參數，強制後端在啟用「純地端模式」時禁止 fallback 讀取本地 `.env` 的金鑰，確保 100% 本地隔離安全。
     *   **macOS Ollama 自動喚醒**：地端模式下會自動在 macOS 背景啟動 Ollama 應用程式，免除手動點開的麻煩。
+    *   **純地端模式回答展示**：
+        <img src="images/純地端回答.PNG" alt="純地端模式回答畫面" width="80%" />
 *   🌐 **全螢幕內嵌手繪風簡報播放器**：在側邊欄提供「🌐 開啟專案簡報」一鍵點選。
     *   **100% 當前頁面展示 (防分頁跳出)**：將最新版簡報 `Smart_SCU_Law_Navigator＿1.pdf` 透過 Python (PyMuPDF) 轉換為高品質 PNG 投影片圖片內嵌展示，徹底消除了瀏覽器預設 PDF 工具列的生硬感，且防止跳出新分頁。
     *   **支援鍵盤 `←`/`→` 方向鍵**：開啟彈窗後，使用者可像用 PowerPoint 一樣在鍵盤上流暢換頁，並按 `Esc` 鍵關閉。
