@@ -1,4 +1,4 @@
-# 🎓 SCU 法規規範智慧檢索系統 (管資期末 - Benson組)
+# 🎓 SCU 法規規範智慧檢索系統 
 
 [![React](https://img.shields.io/badge/React-18.2%2B-blue?logo=react&logoColor=white)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
