@@ -26,9 +26,7 @@ async def handle_rag_query(request: RAGQueryRequest):
         else:
             api_key = request.api_key
             if not api_key or not api_key.strip():
-                api_key = os.environ.get("GEMINI_API_KEY", None)
-                if not api_key or not api_key.strip():
-                    api_key = None
+                api_key = None
                 
         result = query_rag(
             request.query, 
@@ -51,9 +49,7 @@ async def handle_rag_query_stream(request: RAGQueryRequest):
             else:
                 api_key = request.api_key
                 if not api_key or not api_key.strip():
-                    api_key = os.environ.get("GEMINI_API_KEY", None)
-                    if not api_key or not api_key.strip():
-                        api_key = None
+                    api_key = None
                     
             generator = query_rag_stream(
                 request.query, 

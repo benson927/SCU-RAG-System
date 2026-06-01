@@ -363,8 +363,8 @@ with st.sidebar:
 
     # 第一段：⚙️ 系統配置
     st.markdown("### ⚙️ 系統配置")
-    # 優先從 session_state 讀取，若無則從環境變數自動帶入
-    default_key = st.session_state.get("gemini_key", os.environ.get("GEMINI_API_KEY", ""))
+    # 僅從 session_state 讀取，不從環境變數自動帶入
+    default_key = st.session_state.get("gemini_key", "")
     gemini_key = st.text_input(
         "🔑 Gemini API 金鑰 (選填)",
         type="password",
