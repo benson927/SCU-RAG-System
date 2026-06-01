@@ -104,12 +104,8 @@ SCU-RAG-System/
 
 ## 🛠️ 安裝與開發環境部署
 
-請先開啟您的終端機 (Terminal)，切換至本專案的根目錄：
-```bash
-cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
-```
-
 ### 1. 安裝 Python 後端套件依賴
+
 建議使用 Python 3.10 以上版本，執行以下指令安裝所需套件：
 ```bash
 python3 -m pip install -r requirements.txt
@@ -147,17 +143,16 @@ python3 -m pip install -r requirements.txt
 本系統已全面重構為更符合現代 Enterprise 架構的前後端分離系統，支援 **前後端 SSE (Server-Sent Events) 打字機串流渲染效果**，響應速度與視覺特效最為流暢：
 
 #### 步驟 1：啟動後端 FastAPI 伺服器
-打開終端機，執行以下命令：
+在專案根目錄下打開終端機，執行以下命令：
 ```bash
-cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
 python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 * 後端 API 服務將運行在 [http://127.0.0.1:8000](http://127.0.0.1:8000)。
 
 #### 步驟 2：啟動前端 React (Vite) 網頁程式
-新建一個終端機分頁，進入前端專案目錄並啟動前端：
+新建一個終端機分頁，切換至前端目錄並啟動前端：
 ```bash
-cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/frontend"
+cd frontend
 npm install      # 初次使用時安裝前端套件
 npm run dev      # 啟動 React + Vite 開發伺服器
 ```
@@ -166,9 +161,8 @@ npm run dev      # 啟動 React + Vite 開發伺服器
 ---
 
 ### ⚠️ 方案二：啟動 Streamlit 傳統單體檢索介面 (僅供備用)
-若您需要展示原先的 Streamlit 傳統網頁介面對話，請打開終端機並執行：
+若您需要展示原先的 Streamlit 傳統網頁介面對話，請在專案根目錄下打開終端機並執行：
 ```bash
-cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
 python3 -m streamlit run app.py
 ```
 * 執行後，瀏覽器會自動開啟 [http://localhost:8501](http://localhost:8501)。
@@ -176,14 +170,13 @@ python3 -m streamlit run app.py
 ---
 
 ### 🎯 方案三：執行 104 題地端規章自動評估問答集
-在不消耗 Gemini API 限額的情況下，完全在地端批量測試 RAG 檢索與回答：
+在不消耗 Gemini API 限額的情況下，在專案根目錄下批量測試 RAG 檢索與回答：
 ```bash
-cd "/Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)"
 python3 scratch/run_faq_evaluation.py
 ```
 * **產出成果**：
-  * JSON 格式數據：[demo_faq_100.json](file:///Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/demo_faq_100.json)
-  * Markdown 排版評估報告：[demo_faq_100.md](file:///Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/demo_faq_100.md)
+  * JSON 格式數據：[demo_faq_100.json](demo_faq_100.json)
+  * Markdown 排版評估報告：[demo_faq_100.md](demo_faq_100.md)
 
 ---
 

@@ -34,3 +34,7 @@ scratch/
 
 # 向量資料庫
 chroma_db/
+
+# 本地開發備忘錄
+local_notes.txt
+
