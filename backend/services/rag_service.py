@@ -539,7 +539,7 @@ def _similarity_search_with_optional_filter(db, query: str, k: int, filter_metad
     try:
         docs = db.similarity_search(query, k=k, filter=filter_metadata)
         if fallback_on_empty and not docs:
-            _filter_support_cache[cache_key] = False
+            # 空結果可能只是該 query 沒命中，不代表 Chroma filter 不支援。
             return [], False
         _filter_support_cache[cache_key] = True
         return docs, True

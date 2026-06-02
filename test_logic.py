@@ -13,6 +13,7 @@ from backend.services.rag_service import (
     _dedupe_queries,
     _detect_priority_source,
     _retrieve_dense_candidates,
+    _similarity_search_with_optional_filter,
     get_full_system_status,
     rrf_fusion,
 )
@@ -49,6 +50,16 @@ class FakeBM25:
     def get_scores(self, tokenized_query):
         self.score_calls += 1
         return self.scores
+
+class EmptyThenHitVectorDb:
+    def __init__(self):
+        self.calls = []
+
+    def similarity_search(self, query, k=4, filter=None):
+        self.calls.append({"query": query, "k": k, "filter": filter})
+        if len(self.calls) == 1:
+            return []
+        return [Document(page_content="hit", metadata={"is_faq": True})]
 
 class TestRAGPureLogic(unittest.TestCase):
     """測試 RAG 系統中不需外部 API (如 Ollama/Gemini) 的純邏輯函數"""
@@ -146,6 +157,21 @@ class TestRAGPureLogic(unittest.TestCase):
         self.assertEqual(len(pdf_docs), 8)
         self.assertEqual([c["k"] for c in db.calls], [4, 8, 30])
         self.assertIsNone(db.calls[-1]["filter"])
+
+    def test_empty_filter_result_does_not_disable_filter_cache(self):
+        """filter 空結果只應對當次 fallback，不應永久標記 filter 不可用"""
+        rag_service._filter_support_cache = {}
+        db = EmptyThenHitVectorDb()
+        filter_metadata = {"is_faq": True}
+
+        docs, ok = _similarity_search_with_optional_filter(db, "no hit", 4, filter_metadata)
+        self.assertEqual(docs, [])
+        self.assertFalse(ok)
+        self.assertNotIn(rag_service._filter_cache_key(filter_metadata), rag_service._filter_support_cache)
+
+        docs, ok = _similarity_search_with_optional_filter(db, "has hit", 4, filter_metadata)
+        self.assertTrue(ok)
+        self.assertEqual([d.page_content for d in docs], ["hit"])
         
     def test_system_status_structure(self):
         """測試後端健康狀態 API 的回傳欄位結構，確保格式完全正確，防止前端解析出錯"""
