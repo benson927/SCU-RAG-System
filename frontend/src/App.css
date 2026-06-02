@@ -175,27 +175,29 @@ body::before {
 .main-layout {
   display: flex;
   flex: 1;
-  gap: 1.2rem;
+  gap: 1.35rem;
   height: calc(100vh - 120px);
   overflow: hidden;
 }
 
 /* 側邊欄 - 手繪筆記本風格 */
 .sidebar {
-  width: 300px;
+  width: 340px;
+  flex: 0 0 340px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.85rem;
   overflow-y: auto;
-  padding-right: 6px;
+  padding: 0 8px 0.2rem 0;
+  scrollbar-gutter: stable;
 }
 
 .sidebar-card {
   background: var(--paper-white);
   border: 3px solid var(--ink-black);
   border-radius: 16px 12px 14px 15px / 12px 14px 13px 15px;
-  padding: 1.2rem;
-  box-shadow: var(--sketch-shadow);
+  padding: 1rem 1.05rem;
+  box-shadow: 4px 4px 0px var(--ink-black);
   position: relative;
 }
 
@@ -212,19 +214,20 @@ body::before {
 }
 
 .sidebar-card h3 {
-  font-size: 1.1rem;
+  font-size: 1.12rem;
   font-weight: 900;
   margin-top: 0.4rem;
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.65rem;
   color: var(--ink-black);
   border-bottom: 2px dashed var(--ink-black);
   padding-bottom: 0.2rem;
 }
 
 .sidebar-card p {
-  font-size: 0.88rem;
+  font-size: 0.95rem;
   color: #4b5563;
-  line-height: 1.6;
+  line-height: 1.65;
+  margin: 0;
 }
 
 .info-card {
@@ -262,19 +265,20 @@ body::before {
 
 /* 綠色就緒徽章 */
 .db-ready-badge {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   font-weight: 900;
   color: #0f5132;
   background: #f0fdf4;
   border: 2px solid var(--ink-black);
-  padding: 0.3rem 0.6rem;
+  padding: 0.45rem 0.7rem;
   border-radius: 8px;
   box-shadow: 2px 2px 0px var(--ink-black);
-  margin-top: 0.8rem;
-  margin-bottom: 0.4rem;
+  margin-top: 0.7rem;
+  margin-bottom: 0.35rem;
+  line-height: 1.35;
 }
 
 /* 綠色呼吸燈 */
@@ -309,7 +313,7 @@ body::before {
   margin: 0.8rem 0 0 0;
   padding-left: 1.1rem;
   list-style-type: decimal;
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   font-weight: 800;
   color: #4b5563;
   display: flex;
@@ -318,11 +322,15 @@ body::before {
   text-align: left;
   border-top: 2px dashed var(--gray-sketch);
   padding-top: 0.8rem;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 0.35rem;
 }
 
 .law-list li {
-  line-height: 1.4;
-  word-break: break-all;
+  line-height: 1.45;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 /* 地端推論引擎卡片 */
@@ -333,15 +341,16 @@ body::before {
 .engine-info {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  margin-top: 0.4rem;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
 }
 
 .info-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.8rem;
+  gap: 0.7rem;
+  font-size: 0.88rem;
   border-bottom: 1.5px dashed rgba(30, 37, 43, 0.1);
   padding-bottom: 0.4rem;
 }
@@ -359,6 +368,7 @@ body::before {
 .info-item strong {
   color: var(--ink-black);
   font-weight: 900;
+  text-align: right;
 }
 
 /* 離線保護標籤 */
@@ -376,26 +386,30 @@ body::before {
 .step-list {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
-  margin-top: 0.8rem;
+  gap: 0.65rem;
+  margin-top: 0.7rem;
 }
 
 .step-item {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.7rem;
   align-items: flex-start;
+  background: rgba(255, 255, 255, 0.72);
+  border: 2px dashed rgba(30, 37, 43, 0.14);
+  border-radius: 10px;
+  padding: 0.55rem 0.6rem;
 }
 
 .step-num {
   background: var(--ink-black);
   color: var(--paper-white);
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 900;
   flex-shrink: 0;
 }
@@ -407,12 +421,14 @@ body::before {
 
 .step-item div strong {
   color: var(--ink-black);
-  font-weight: 800;
+  font-size: 0.94rem;
+  font-weight: 900;
 }
 
 .step-item div span {
   color: #6b7280;
-  font-size: 0.78rem;
+  font-size: 0.83rem;
+  line-height: 1.4;
 }
 
 .step-item code {
@@ -428,9 +444,10 @@ body::before {
   background: #ff7675;
   border: 3px solid var(--ink-black);
   color: var(--ink-black);
-  padding: 0.8rem;
+  padding: 0.9rem;
   border-radius: 12px;
   font-weight: 900;
+  font-size: 0.98rem;
   cursor: pointer;
   box-shadow: var(--sketch-shadow);
   transition: all 0.1s;
@@ -946,15 +963,21 @@ body::before {
   flex-direction: column;
   gap: 0.8rem;
   margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  background: var(--anime-sky);
+  padding-top: 0.35rem;
+  z-index: 5;
 }
 
 .view-presentation-btn {
   background: var(--mint-green); /* 與清除歷史的紅色形成鮮明撞色 */
   border: 3px solid var(--ink-black);
   color: var(--ink-black);
-  padding: 0.8rem;
+  padding: 0.9rem;
   border-radius: 12px;
   font-weight: 900;
+  font-size: 0.98rem;
   cursor: pointer;
   box-shadow: var(--sketch-shadow);
   transition: all 0.1s;
@@ -1216,19 +1239,20 @@ body::before {
 
 /* 引擎運行徽章 */
 .current-engine-badge {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.82rem;
+  font-size: 0.86rem;
   font-weight: 900;
   color: var(--ink-black);
   background: var(--paper-white);
   border: 2px solid var(--ink-black);
-  padding: 0.35rem 0.7rem;
+  padding: 0.42rem 0.7rem;
   border-radius: 8px;
   box-shadow: 2px 2px 0px var(--ink-black);
   margin-top: 0.5rem;
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.25;
 }
 
 .engine-dot {
@@ -1250,12 +1274,12 @@ body::before {
 
 /* 配置表單 */
 .config-form {
-  margin-top: 0.8rem;
-  padding-top: 0.8rem;
+  margin-top: 0.7rem;
+  padding-top: 0.75rem;
   border-top: 2px dashed var(--gray-sketch);
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.75rem;
   animation: slide-down-fade 0.2s ease-out;
 }
 
@@ -1278,7 +1302,7 @@ body::before {
 }
 
 .config-input-group label {
-  font-size: 0.78rem;
+  font-size: 0.86rem;
   font-weight: 900;
   color: var(--ink-black);
 }
@@ -1287,8 +1311,8 @@ body::before {
   background: var(--paper-white);
   border: 2.5px solid var(--ink-black);
   border-radius: 8px;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.82rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.9rem;
   font-weight: 700;
   outline: none;
   box-shadow: inset 1px 1px 0px rgba(0,0,0,0.1);
@@ -1305,14 +1329,18 @@ body::before {
 .config-toggle-group {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.65rem;
 }
 
 .toggle-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.58);
+  border: 2px solid rgba(30, 37, 43, 0.12);
+  border-radius: 10px;
+  padding: 0.55rem 0.65rem;
 }
 
 .toggle-label-desc {
@@ -1324,15 +1352,16 @@ body::before {
 }
 
 .toggle-label-desc strong {
-  font-size: 0.8rem;
+  font-size: 0.9rem;
   font-weight: 900;
   color: var(--ink-black);
 }
 
 .toggle-label-desc span {
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   color: #6b7280;
   font-weight: 700;
+  line-height: 1.35;
 }
 
 /* 經典 Neobrutalism 風格 Switch 滑塊 */
@@ -1438,5 +1467,3 @@ input:disabled + .slider {
 .manga-p:last-child {
   margin-bottom: 0;
 }
-
-
