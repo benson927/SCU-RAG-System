@@ -56,6 +56,8 @@ function App() {
   const chatEndRef = useRef(null);
   const ragAbortRef = useRef(null);
   const statusCheckRef = useRef(null);
+  const isCloudMode = !forceLocal && geminiKey.trim();
+  const activeEngineName = isCloudMode ? "Gemini 2.5 Flash" : "Gemma 3 (Ollama)";
 
   // 簡報鍵盤事件監聽 (左右方向鍵換頁，Esc 關閉)
   useEffect(() => {
@@ -407,9 +409,9 @@ function App() {
             {/* 運作狀態徽章 */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
               <div className="current-engine-badge" style={{ margin: "0.5rem 0 0.8rem 0" }}>
-                <span className={`engine-dot ${(!forceLocal && geminiKey.trim()) ? "cloud" : "local"}`}></span>
+                <span className={`engine-dot ${isCloudMode ? "cloud" : "local"}`}></span>
                 <span>
-                  {!forceLocal && geminiKey.trim() ? "雲端加速模式 ⚡" : "純地端模式 🦉"}
+                  {isCloudMode ? "雲端加速模式 ⚡" : "純地端模式 🦉"}
                 </span>
               </div>
               
@@ -480,7 +482,7 @@ function App() {
             <div className="engine-info">
               <div className="info-item">
                 <span>生成模型</span>
-                <strong>{!forceLocal && geminiKey.trim() ? "Gemini 2.5 Flash" : "Gemma 3 (Ollama)"}</strong>
+                <strong>{activeEngineName}</strong>
               </div>
               <div className="info-item">
                 <span>向量嵌入</span>
@@ -571,7 +573,7 @@ function App() {
                     <span></span>
                     <span></span>
                   </div>
-                  <span className="loading-text">地端 AI (gemma3) 正在搜尋與思考中...</span>
+                  <span className="loading-text">{activeEngineName} 正在搜尋與思考中...</span>
                 </div>
               </div>
             )}
