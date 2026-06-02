@@ -7,8 +7,32 @@ _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 if _CURRENT_DIR not in sys.path:
     sys.path.append(_CURRENT_DIR)
 
-from backend.services.rag_service import _detect_priority_source, rrf_fusion, get_full_system_status
+from backend.services import rag_service
+from backend.services.rag_service import _detect_priority_source, _retrieve_dense_candidates, rrf_fusion, get_full_system_status
 from langchain_core.documents import Document
+
+class FakeVectorDb:
+    def __init__(self, filter_supported=True):
+        self.filter_supported = filter_supported
+        self.calls = []
+        self.faq_docs = [
+            Document(page_content=f"faq {i}", metadata={"is_faq": True, "source": "faq.pdf"})
+            for i in range(6)
+        ]
+        self.pdf_docs = [
+            Document(page_content=f"pdf {i}", metadata={"source": "law.pdf"})
+            for i in range(10)
+        ]
+
+    def similarity_search(self, query, k=4, filter=None):
+        self.calls.append({"query": query, "k": k, "filter": filter})
+        if filter is not None and not self.filter_supported:
+            raise ValueError("filter not supported")
+        if filter == {"is_faq": True}:
+            return self.faq_docs[:k]
+        if filter == {"is_faq": {"$ne": True}}:
+            return self.pdf_docs[:k]
+        return (self.faq_docs + self.pdf_docs)[:k]
 
 class TestRAGPureLogic(unittest.TestCase):
     """測試 RAG 系統中不需外部 API (如 Ollama/Gemini) 的純邏輯函數"""
@@ -62,6 +86,31 @@ class TestRAGPureLogic(unittest.TestCase):
         self.assertIn("請假必須於一週內辦理", contents)
         self.assertIn("工讀金由學務處核發", contents)
         self.assertIn("宿舍內禁止吸菸", contents)
+
+    def test_dense_retrieval_uses_metadata_filters_when_supported(self):
+        """Chroma filter 可用時，FAQ/PDF dense 檢索應分別限制 k，避免全量 k=30 搜尋"""
+        rag_service._filter_support_cache = {}
+        db = FakeVectorDb(filter_supported=True)
+
+        faq_docs, pdf_docs = _retrieve_dense_candidates(db, "工讀時薪是多少")
+
+        self.assertEqual(len(faq_docs), 4)
+        self.assertEqual(len(pdf_docs), 8)
+        self.assertEqual([c["k"] for c in db.calls], [4, 8])
+        self.assertEqual(db.calls[0]["filter"], {"is_faq": True})
+        self.assertEqual(db.calls[1]["filter"], {"is_faq": {"$ne": True}})
+
+    def test_dense_retrieval_falls_back_when_filters_fail(self):
+        """Chroma filter 不可用時，應退回 k=30 全量候選並用 Python metadata 分類"""
+        rag_service._filter_support_cache = {}
+        db = FakeVectorDb(filter_supported=False)
+
+        faq_docs, pdf_docs = _retrieve_dense_candidates(db, "期末考請假期限")
+
+        self.assertEqual(len(faq_docs), 4)
+        self.assertEqual(len(pdf_docs), 8)
+        self.assertEqual([c["k"] for c in db.calls], [4, 8, 30])
+        self.assertIsNone(db.calls[-1]["filter"])
         
     def test_system_status_structure(self):
         """測試後端健康狀態 API 的回傳欄位結構，確保格式完全正確，防止前端解析出錯"""

@@ -112,6 +112,11 @@ _title_mapping_cache = {
     "mtime_ns": None,
     "mapping": {},
 }
+_faq_count_cache = {
+    "signature": None,
+    "count": 0,
+}
+_filter_support_cache = {}
 
 def _get_pdf_files() -> list:
     return sorted([f for f in os.listdir(DATA_DIR) if f.endswith(".pdf")]) if os.path.exists(DATA_DIR) else []
@@ -137,7 +142,7 @@ def _is_db_meta_current(db_meta: dict, pdf_files: list) -> bool:
     return db_meta.get("files", []) == pdf_files and db_meta.get("faq_signature") == _get_faq_signature()
 
 def _clear_runtime_caches(clear_db: bool = False):
-    global _db, _status_cache, _status_cache_at, _bm25_cache
+    global _db, _status_cache, _status_cache_at, _bm25_cache, _filter_support_cache
     if clear_db:
         _db = None
     _status_cache = None
@@ -148,6 +153,7 @@ def _clear_runtime_caches(clear_db: bool = False):
         "pdf_metadatas": [],
         "bm25_pdf": None,
     }
+    _filter_support_cache = {}
 
 def _clean_pdf_text(text: str) -> str:
     """修正常見 PDF ligature/編碼破碎字元。"""
@@ -189,6 +195,30 @@ def _get_title_mapping() -> dict:
         "mapping": mapping,
     }
     return mapping
+
+def _get_faq_count() -> int:
+    """統計 FAQ 題數，並依 faq_cache.json 簽章快取結果。"""
+    global _faq_count_cache
+    signature = _get_faq_signature()
+    if _faq_count_cache["signature"] == signature:
+        return _faq_count_cache["count"]
+
+    faq_count = 0
+    faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
+    if signature is not None:
+        try:
+            with open(faq_cache_path, 'r', encoding='utf-8') as f:
+                faq_cache = json.load(f)
+            for entry in faq_cache.values():
+                faq_count += len([q for q in entry.get("faqs", []) if q.strip()])
+        except Exception:
+            faq_count = 0
+
+    _faq_count_cache = {
+        "signature": signature,
+        "count": faq_count,
+    }
+    return faq_count
 
 def get_embeddings():
     """延遲載入並取得地端嵌入模型，只在需要時檢查 Ollama"""
@@ -476,6 +506,61 @@ def _get_pdf_bm25_index(db) -> dict:
     }
     return _bm25_cache
 
+def _filter_cache_key(filter_metadata: dict) -> str:
+    return json.dumps(filter_metadata, sort_keys=True, ensure_ascii=False)
+
+def _split_dense_docs_by_type(docs: list) -> tuple:
+    docs_faq = [d for d in docs if d.metadata.get("is_faq") is True]
+    docs_pdf = [d for d in docs if d.metadata.get("is_faq") is not True]
+    return docs_faq, docs_pdf
+
+def _similarity_search_with_optional_filter(db, query: str, k: int, filter_metadata: dict, fallback_on_empty: bool = True) -> tuple:
+    """嘗試使用 Chroma metadata filter；不可用時回傳 ([], False) 讓上層走安全 fallback。"""
+    global _filter_support_cache
+    cache_key = _filter_cache_key(filter_metadata)
+    if _filter_support_cache.get(cache_key) is False:
+        return [], False
+
+    try:
+        docs = db.similarity_search(query, k=k, filter=filter_metadata)
+        if fallback_on_empty and not docs:
+            _filter_support_cache[cache_key] = False
+            return [], False
+        _filter_support_cache[cache_key] = True
+        return docs, True
+    except Exception as e:
+        print(f"⚠️ Chroma metadata filter 不可用，改用 Python 層分類 fallback: {e}")
+        _filter_support_cache[cache_key] = False
+        return [], False
+
+def _retrieve_dense_candidates(db, query: str) -> tuple:
+    """雙路 dense 檢索：優先 metadata filter，失敗時退回 k=30 全量候選分類。"""
+    faq_docs, faq_filter_ok = _similarity_search_with_optional_filter(
+        db,
+        query,
+        k=4,
+        filter_metadata={"is_faq": True},
+    )
+    pdf_docs, pdf_filter_ok = _similarity_search_with_optional_filter(
+        db,
+        query,
+        k=8,
+        filter_metadata={"is_faq": {"$ne": True}},
+    )
+
+    if faq_filter_ok and pdf_filter_ok:
+        return faq_docs[:4], pdf_docs[:8]
+
+    fallback_docs = db.similarity_search(query, k=30)
+    fallback_faq_docs, fallback_pdf_docs = _split_dense_docs_by_type(fallback_docs)
+
+    if not faq_filter_ok:
+        faq_docs = fallback_faq_docs[:4]
+    if not pdf_filter_ok:
+        pdf_docs = fallback_pdf_docs[:8]
+
+    return faq_docs[:4], pdf_docs[:8]
+
 def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_expansion: bool = False):
     """查詢 RAG 系統並以生成器方式返回 metadata 與答案字元流 (支援 RRF 融合排序、查詢擴展與 Gemini API 備援)"""
     # 1. 檢索本地向量資料庫（PDF 知識庫）
@@ -514,12 +599,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     pdf_sparse_lists = []   # PDF BM25 關鍵字命中結果
     
     for q in queries:
-        # 一次取得較多結果，再在 Python 層手動分類（避免 Chroma filter 版本相容問題）
-        docs_all_dense = db.similarity_search(q, k=30)  # 擴大候選池，降低假陰性機率
-        
-        # 分類：is_faq=True 的為 FAQ docs，其餘為 PDF chunk docs
-        docs_faq_q = [d for d in docs_all_dense if d.metadata.get("is_faq") is True][:4]
-        docs_pdf_q = [d for d in docs_all_dense if d.metadata.get("is_faq") is not True][:8]
+        docs_faq_q, docs_pdf_q = _retrieve_dense_candidates(db, q)
         
         if docs_faq_q:
             faq_dense_lists.append(docs_faq_q)
@@ -786,16 +866,7 @@ def get_full_system_status() -> dict:
     loaded_files = [title_mapping.get(f, f) for f in raw_files]
     
     # 3. 統計 FAQ 數量
-    faq_count = 0
-    faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
-    if os.path.exists(faq_cache_path):
-        try:
-            with open(faq_cache_path, 'r', encoding='utf-8') as f:
-                faq_cache = json.load(f)
-            for entry in faq_cache.values():
-                faq_count += len([q for q in entry.get("faqs", []) if q.strip()])
-        except Exception:
-            pass
+    faq_count = _get_faq_count()
             
     # 4. 偵測 Ollama 在線狀態 (不嘗試自動開啟，僅快速探測)
     ollama_status = "offline"

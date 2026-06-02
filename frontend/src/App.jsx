@@ -55,6 +55,7 @@ function App() {
   const [loadedFiles, setLoadedFiles] = useState([]);
   const chatEndRef = useRef(null);
   const ragAbortRef = useRef(null);
+  const statusCheckRef = useRef(null);
 
   // 簡報鍵盤事件監聽 (左右方向鍵換頁，Esc 關閉)
   useEffect(() => {
@@ -75,8 +76,13 @@ function App() {
 
   // 檢查後端 FastAPI 服務狀態與系統健康度
   const checkStatus = async () => {
+    if (statusCheckRef.current) return;
+    const abortController = new AbortController();
+    statusCheckRef.current = abortController;
     try {
-      const res = await fetch(`${API_BASE_URL}/api/status`);
+      const res = await fetch(`${API_BASE_URL}/api/status`, {
+        signal: abortController.signal,
+      });
       if (res.ok) {
         const data = await res.json();
         setBackendStatus("online");
@@ -89,9 +95,14 @@ function App() {
         setBackendStatus("offline");
         setOllamaStatus("offline");
       }
-    } catch {
+    } catch (error) {
+      if (error?.name === "AbortError") return;
       setBackendStatus("offline");
       setOllamaStatus("offline");
+    } finally {
+      if (statusCheckRef.current === abortController) {
+        statusCheckRef.current = null;
+      }
     }
   };
 
@@ -119,6 +130,7 @@ function App() {
   useEffect(() => {
     return () => {
       ragAbortRef.current?.abort();
+      statusCheckRef.current?.abort();
     };
   }, []);
 
