@@ -8,7 +8,14 @@ if _CURRENT_DIR not in sys.path:
     sys.path.append(_CURRENT_DIR)
 
 from backend.services import rag_service
-from backend.services.rag_service import _detect_priority_source, _retrieve_dense_candidates, rrf_fusion, get_full_system_status
+from backend.services.rag_service import (
+    _bm25_top_pdf_docs,
+    _dedupe_queries,
+    _detect_priority_source,
+    _retrieve_dense_candidates,
+    get_full_system_status,
+    rrf_fusion,
+)
 from langchain_core.documents import Document
 
 class FakeVectorDb:
@@ -33,6 +40,15 @@ class FakeVectorDb:
         if filter == {"is_faq": {"$ne": True}}:
             return self.pdf_docs[:k]
         return (self.faq_docs + self.pdf_docs)[:k]
+
+class FakeBM25:
+    def __init__(self, scores):
+        self.scores = scores
+        self.score_calls = 0
+
+    def get_scores(self, tokenized_query):
+        self.score_calls += 1
+        return self.scores
 
 class TestRAGPureLogic(unittest.TestCase):
     """測試 RAG 系統中不需外部 API (如 Ollama/Gemini) 的純邏輯函數"""
@@ -86,6 +102,25 @@ class TestRAGPureLogic(unittest.TestCase):
         self.assertIn("請假必須於一週內辦理", contents)
         self.assertIn("工讀金由學務處核發", contents)
         self.assertIn("宿舍內禁止吸菸", contents)
+
+    def test_dedupe_queries_preserves_order_and_limit(self):
+        """查詢擴展結果應保留順序去重，避免重複檢索"""
+        queries = ["工讀", " 工讀 ", "WORK", "work", "宿舍", "請假"]
+
+        deduped = _dedupe_queries(queries, limit=3)
+
+        self.assertEqual(deduped, ["工讀", "WORK", "宿舍"])
+
+    def test_bm25_top_pdf_docs_scores_once(self):
+        """BM25 top docs 應只呼叫一次 get_scores，避免 get_top_n 重複計分"""
+        bm25 = FakeBM25([0.0, 3.0, 0.0, 5.0, 1.0])
+        pdf_texts = ["doc0", "doc1", "doc2", "doc3", "doc4"]
+        pdf_metadatas = [{"source": f"law{i}.pdf"} for i in range(len(pdf_texts))]
+
+        docs = _bm25_top_pdf_docs(bm25, pdf_texts, pdf_metadatas, ["工讀"], n=3)
+
+        self.assertEqual(bm25.score_calls, 1)
+        self.assertEqual([d.page_content for d in docs], ["doc3", "doc1", "doc4"])
 
     def test_dense_retrieval_uses_metadata_filters_when_supported(self):
         """Chroma filter 可用時，FAQ/PDF dense 檢索應分別限制 k，避免全量 k=30 搜尋"""

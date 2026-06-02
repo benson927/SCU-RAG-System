@@ -4,6 +4,7 @@ import jieba
 import subprocess
 import urllib.request
 import time
+import heapq
 from typing import Optional
 
 def ensure_ollama_running():
@@ -395,6 +396,20 @@ def check_vector_db_status() -> dict:
     else:
         return {"status": "outdated", "files": pdf_files}
 
+def _dedupe_queries(queries: list, limit: int = 4) -> list:
+    """保持順序去除重複查詢，避免 dense/BM25 檢索做重工。"""
+    deduped = []
+    seen = set()
+    for query in queries:
+        cleaned = query.strip()
+        key = cleaned.casefold()
+        if cleaned and key not in seen:
+            seen.add(key)
+            deduped.append(cleaned)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
 def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
     """利用 LLM 將使用者查詢擴展為多個檢索句"""
     queries = [user_query]
@@ -404,7 +419,7 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
     
     # 為了節省算力與時間，非請假問題若長度大於 30 字，則直接返回不進行擴展
     if not is_leave_query and len(user_query.strip()) > 30:
-        return queries
+        return _dedupe_queries(queries)
     
     # 【地端零延遲雙語擴展優化】
     # 若為純地端模式且沒有 API 金鑰，呼叫本地 LLM 做擴展會耗費 3~5 秒。
@@ -417,9 +432,9 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
                 queries.extend(["examination leave regulations", "final exam leave of absence", "makeup exam request"])
             else:
                 queries.extend(["student leave regulations", "leave of absence", "absent from class"])
-            return queries[:4]
+            return _dedupe_queries(queries)
         else:
-            return queries
+            return _dedupe_queries(queries)
             
     if is_leave_query:
         prompt = (
@@ -454,7 +469,7 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
     except Exception as e:
         print(f"⚠️ 查詢擴展失敗，將僅使用原問句進行檢索: {e}")
         
-    return queries[:4]
+    return _dedupe_queries(queries)
 
 def rrf_fusion(dense_results_list: list, sparse_results_list: list, k: int = 60) -> list:
     """倒數排序融合 (RRF) 演算法"""
@@ -561,6 +576,18 @@ def _retrieve_dense_candidates(db, query: str) -> tuple:
 
     return faq_docs[:4], pdf_docs[:8]
 
+def _bm25_top_pdf_docs(bm25_pdf, pdf_texts: list, pdf_metadatas: list, tokenized_query: list, n: int = 4) -> list:
+    """用單次 BM25 scoring 取得 top N PDF docs。"""
+    scores = bm25_pdf.get_scores(tokenized_query)
+    top_n = min(n, len(pdf_texts))
+    top_indices = heapq.nlargest(top_n, range(len(pdf_texts)), key=lambda idx: scores[idx])
+
+    docs = []
+    for idx in top_indices:
+        if scores[idx] > 0:
+            docs.append(Document(page_content=pdf_texts[idx], metadata=pdf_metadatas[idx]))
+    return docs
+
 def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_expansion: bool = False):
     """查詢 RAG 系統並以生成器方式返回 metadata 與答案字元流 (支援 RRF 融合排序、查詢擴展與 Gemini API 備援)"""
     # 1. 檢索本地向量資料庫（PDF 知識庫）
@@ -609,12 +636,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
         # PDF BM25 關鍵字搜尋（只在 PDF chunk 語料庫中搜尋）
         if bm25_pdf and pdf_texts:
             tokenized_q = list(jieba.cut(q))
-            scores = bm25_pdf.get_scores(tokenized_q)
-            top_n_idx = bm25_pdf.get_top_n(tokenized_q, range(len(pdf_texts)), n=4)
-            docs_sparse = []
-            for idx in top_n_idx:
-                if scores[idx] > 0:
-                    docs_sparse.append(Document(page_content=pdf_texts[idx], metadata=pdf_metadatas[idx]))
+            docs_sparse = _bm25_top_pdf_docs(bm25_pdf, pdf_texts, pdf_metadatas, tokenized_q, n=4)
             pdf_sparse_lists.append(docs_sparse)
 
             
