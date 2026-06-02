@@ -55,6 +55,7 @@ function App() {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [backendStatus, setBackendStatus] = useState("checking"); // checking, online, offline
   const [showLaws, setShowLaws] = useState(false);
   const [showPDFModal, setShowPDFModal] = useState(false); // 新增 PDF 彈窗狀態控制
@@ -103,6 +104,7 @@ function App() {
     if (statusCheckRef.current) return;
     const abortController = new AbortController();
     statusCheckRef.current = abortController;
+    setIsCheckingStatus(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/status`, {
         signal: abortController.signal,
@@ -127,6 +129,7 @@ function App() {
       if (statusCheckRef.current === abortController) {
         statusCheckRef.current = null;
       }
+      setIsCheckingStatus(false);
     }
   };
 
@@ -340,8 +343,8 @@ function App() {
             {backendStatus === "offline" && "地端伺服器：離線"}
           </div>
           {backendStatus === "offline" && (
-            <button className="retry-btn" onClick={checkStatus}>
-              🔄 重試連線
+            <button className="retry-btn" onClick={checkStatus} disabled={isCheckingStatus}>
+              {isCheckingStatus ? "檢查中..." : "🔄 重試連線"}
             </button>
           )}
         </div>
