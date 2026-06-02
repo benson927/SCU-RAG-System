@@ -19,6 +19,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api.router import router as rag_router
 
+_default_cors_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
+]
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+] or _default_cors_origins
+
 app = FastAPI(
     title="完全地端企業知識庫 RAG 系統 API",
     description="基於本地端 PDF 知識庫與 Ollama 推論之 FastAPI RAG 核心後端服務。",
@@ -28,7 +42,7 @@ app = FastAPI(
 # 配置 CORS，支援 React 前端連線
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 本地測試允許所有來源，生產環境應限制具體 Port
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

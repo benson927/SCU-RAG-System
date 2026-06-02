@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 
 // 輕量手繪風 Markdown 解析器 (零套件依賴，實現螢光筆劃重點)
 const renderMarkdown = (text) => {
@@ -46,7 +48,13 @@ function App() {
   const [geminiKey, setGeminiKey] = useState(localStorage.getItem("geminiKey") || "");
   const [disableExpansion, setDisableExpansion] = useState(localStorage.getItem("disableExpansion") !== "false"); // 預設為 true
   const [forceLocal, setForceLocal] = useState(localStorage.getItem("forceLocal") === "true"); // 預設為 false
+  const [dbStatus, setDbStatus] = useState("empty"); // ready, outdated, empty
+  const [pdfCount, setPdfCount] = useState(0);
+  const [faqCount, setFaqCount] = useState(0);
+  const [ollamaStatus, setOllamaStatus] = useState("offline"); // online, offline
+  const [loadedFiles, setLoadedFiles] = useState([]);
   const chatEndRef = useRef(null);
+  const ragAbortRef = useRef(null);
 
   // 簡報鍵盤事件監聽 (左右方向鍵換頁，Esc 關閉)
   useEffect(() => {
@@ -65,25 +73,53 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showPDFModal]);
 
-  // 檢查後端 FastAPI 服務狀態
+  // 檢查後端 FastAPI 服務狀態與系統健康度
   const checkStatus = async () => {
     try {
-      const res = await fetch("http://localhost:8000/");
+      const res = await fetch(`${API_BASE_URL}/api/status`);
       if (res.ok) {
+        const data = await res.json();
         setBackendStatus("online");
+        setDbStatus(data.db_status || "empty");
+        setPdfCount(data.pdf_count || 0);
+        setFaqCount(data.faq_count || 0);
+        setOllamaStatus(data.ollama_status || "offline");
+        setLoadedFiles(data.loaded_files || []);
       } else {
         setBackendStatus("offline");
+        setOllamaStatus("offline");
       }
-    } catch (e) {
+    } catch {
       setBackendStatus("offline");
+      setOllamaStatus("offline");
     }
   };
 
   useEffect(() => {
-    checkStatus();
+    const initialCheck = window.setTimeout(() => {
+      void checkStatus();
+    }, 0);
+    const checkWhenVisible = () => {
+      if (!document.hidden) {
+        void checkStatus();
+      }
+    };
     // 每 10 秒自動檢查一次連線狀態
-    const interval = setInterval(checkStatus, 10000);
-    return () => clearInterval(interval);
+    const interval = window.setInterval(() => {
+      checkWhenVisible();
+    }, 10000);
+    document.addEventListener("visibilitychange", checkWhenVisible);
+    return () => {
+      window.clearTimeout(initialCheck);
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", checkWhenVisible);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      ragAbortRef.current?.abort();
+    };
   }, []);
 
   // 自動捲動到最新訊息
@@ -98,19 +134,22 @@ function App() {
     const userQuery = input.trim();
     setInput("");
     
-    // 新增使用者訊息
-    setMessages(prev => [...prev, { role: "user", content: userQuery }]);
+    ragAbortRef.current?.abort();
+    const abortController = new AbortController();
+    ragAbortRef.current = abortController;
     setIsLoading(true);
 
-    // 新增一個空的 AI 回答，用來逐字接收串流內容
-    setMessages(prev => [...prev, {
+    // 新增使用者訊息與空的 AI 回答，用來逐步接收串流內容
+    setMessages(prev => [...prev, { role: "user", content: userQuery }, {
       role: "assistant",
       content: "",
       sources: []
     }]);
 
+    let pendingFrame = null;
+
     try {
-      const response = await fetch("http://localhost:8000/api/rag/stream", {
+      const response = await fetch(`${API_BASE_URL}/api/rag/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -121,6 +160,7 @@ function App() {
           disable_expansion: disableExpansion,
           force_local: forceLocal
         }),
+        signal: abortController.signal,
       });
 
       if (!response.ok) {
@@ -134,8 +174,28 @@ function App() {
       let finalAnswer = "";
       let finalSources = [];
 
+      const flushAssistantMessage = () => {
+        pendingFrame = null;
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastIdx = updated.length - 1;
+          updated[lastIdx] = {
+            ...updated[lastIdx],
+            content: finalAnswer,
+            sources: finalSources
+          };
+          return updated;
+        });
+      };
+
+      const scheduleAssistantUpdate = () => {
+        if (pendingFrame !== null) return;
+        pendingFrame = window.requestAnimationFrame(flushAssistantMessage);
+      };
+
       while (true) {
         const { value, done } = await reader.read();
+        if (abortController.signal.aborted) break;
         if (done) break;
 
         const textChunk = decoder.decode(value, { stream: true });
@@ -153,39 +213,13 @@ function App() {
               const parsed = JSON.parse(dataStr);
               if (parsed.type === "metadata") {
                 finalSources = parsed.sources || [];
-                // 更新 sources 列表，維持打字機滾動
-                setMessages(prev => {
-                  const updated = [...prev];
-                  const lastIdx = updated.length - 1;
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    sources: finalSources
-                  };
-                  return updated;
-                });
+                scheduleAssistantUpdate();
               } else if (parsed.type === "content") {
                 finalAnswer += parsed.content;
-                // 更新回答內容
-                setMessages(prev => {
-                  const updated = [...prev];
-                  const lastIdx = updated.length - 1;
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    content: finalAnswer
-                  };
-                  return updated;
-                });
+                scheduleAssistantUpdate();
               } else if (parsed.type === "error") {
                 finalAnswer += `\n❌ 錯誤：${parsed.content}`;
-                setMessages(prev => {
-                  const updated = [...prev];
-                  const lastIdx = updated.length - 1;
-                  updated[lastIdx] = {
-                    ...updated[lastIdx],
-                    content: finalAnswer
-                  };
-                  return updated;
-                });
+                scheduleAssistantUpdate();
               }
             } catch (e) {
               console.error("解析串流資料失敗:", e);
@@ -193,7 +227,25 @@ function App() {
           }
         }
       }
+
+      if (abortController.signal.aborted) {
+        if (pendingFrame !== null) {
+          window.cancelAnimationFrame(pendingFrame);
+        }
+        return;
+      }
+
+      if (pendingFrame !== null) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+      flushAssistantMessage();
     } catch (error) {
+      if (pendingFrame !== null) {
+        window.cancelAnimationFrame(pendingFrame);
+      }
+      if (error?.name === "AbortError") {
+        return;
+      }
       console.error(error);
       setMessages(prev => {
         const updated = [...prev];
@@ -214,11 +266,17 @@ function App() {
         return updated;
       });
     } finally {
-      setIsLoading(false);
+      if (ragAbortRef.current === abortController) {
+        ragAbortRef.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
   const clearChat = () => {
+    ragAbortRef.current?.abort();
+    ragAbortRef.current = null;
+    setIsLoading(false);
     setMessages([
       {
         role: "assistant",
@@ -291,28 +349,38 @@ function App() {
               <h3>📚 知識庫狀態</h3>
               <span className={`arrow ${showLaws ? "open" : ""}`}>{showLaws ? "▲" : "▼"}</span>
             </div>
-            <div className="db-ready-badge">
-              <span className="pulse-dot"></span>
-              <span>15 份東吳法規已載入</span>
-            </div>
+            
+            {backendStatus === "offline" ? (
+              <div className="db-ready-badge" style={{ color: "#842029", backgroundColor: "#f8d7da" }}>
+                <span className="pulse-dot" style={{ backgroundColor: "#ff7675", boxShadow: "0 0 0 0 rgba(255, 118, 117, 0.7)" }}></span>
+                <span>後端離線，無法取得狀態</span>
+              </div>
+            ) : dbStatus === "ready" ? (
+              <div className="db-ready-badge" style={{ color: "#0f5132", backgroundColor: "#f0fdf4" }}>
+                <span className="pulse-dot" style={{ backgroundColor: "#55efc4", boxShadow: "0 0 0 0 rgba(85, 239, 196, 0.7)" }}></span>
+                <span>{pdfCount} 份法規 & {faqCount} 筆 FAQ 已載入</span>
+              </div>
+            ) : dbStatus === "outdated" ? (
+              <div className="db-ready-badge" style={{ color: "#664d03", backgroundColor: "#fff3cd" }}>
+                <span className="pulse-dot" style={{ backgroundColor: "#f1c40f", boxShadow: "0 0 0 0 rgba(241, 196, 15, 0.7)" }}></span>
+                <span>法規變更，資料庫需要重建</span>
+              </div>
+            ) : (
+              <div className="db-ready-badge" style={{ color: "#842029", backgroundColor: "#f8d7da" }}>
+                <span className="pulse-dot" style={{ backgroundColor: "#ff7675", boxShadow: "0 0 0 0 rgba(255, 118, 117, 0.7)" }}></span>
+                <span>知識庫為空，請放入 PDF 檔案</span>
+              </div>
+            )}
             
             {showLaws && (
               <ul className="law-list">
-                <li>東吳大學學生請假規則</li>
-                <li>東吳大學學生工讀助學實施辦法</li>
-                <li>東吳大學校外學生宿舍輔導及管理辦法</li>
-                <li>東吳大學學生清寒急難救助金實施辦法</li>
-                <li>東吳大學學生社團組織及活動辦法</li>
-                <li>東吳大學優秀應屆畢業生選拔及獎勵辦法</li>
-                <li>東吳大學研究生獎助學金辦法</li>
-                <li>東吳大學碩、博士班優秀新生獎勵辦法</li>
-                <li>東吳大學學生銷過實施辦法</li>
-                <li>東吳大學學生會會費代收辦法</li>
-                <li>東吳大學端木愷校長獎學金實施要點</li>
-                <li>東吳大學學生獎懲委員會組織章程</li>
-                <li>東吳大學獎助學金暨優秀學生甄選委員會組織章程</li>
-                <li>東吳大學獎助學金申請審核辦法</li>
-                <li>東吳大學優良導師獎勵辦法</li>
+                {loadedFiles.length > 0 ? (
+                  loadedFiles.map((file, idx) => (
+                    <li key={idx}>{file}</li>
+                  ))
+                ) : (
+                  <li style={{ fontStyle: "italic", opacity: 0.6, listStyleType: "none" }}>無已載入法規</li>
+                )}
               </ul>
             )}
           </div>
@@ -325,11 +393,20 @@ function App() {
             </div>
             
             {/* 運作狀態徽章 */}
-            <div className="current-engine-badge">
-              <span className={`engine-dot ${(!forceLocal && geminiKey.trim()) ? "cloud" : "local"}`}></span>
-              <span>
-                {!forceLocal && geminiKey.trim() ? "雲端加速模式 ⚡" : "純地端模式 🦉"}
-              </span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div className="current-engine-badge" style={{ margin: "0.5rem 0 0.8rem 0" }}>
+                <span className={`engine-dot ${(!forceLocal && geminiKey.trim()) ? "cloud" : "local"}`}></span>
+                <span>
+                  {!forceLocal && geminiKey.trim() ? "雲端加速模式 ⚡" : "純地端模式 🦉"}
+                </span>
+              </div>
+              
+              <div className="current-engine-badge" style={{ margin: "0.5rem 0 0.8rem 0" }}>
+                <span className="engine-dot" style={{ backgroundColor: ollamaStatus === "online" ? "#55efc4" : "#ff7675" }}></span>
+                <span>
+                  Ollama 服務：{ollamaStatus === "online" ? "在線" : "離線"}
+                </span>
+              </div>
             </div>
             
             {showConfig && (

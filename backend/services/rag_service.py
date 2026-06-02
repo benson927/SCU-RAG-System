@@ -4,6 +4,7 @@ import jieba
 import subprocess
 import urllib.request
 import time
+from typing import Optional
 
 def ensure_ollama_running():
     """檢查本地 Ollama 服務是否啟動，若未啟動則嘗試在 macOS 上自動開啟它"""
@@ -33,9 +34,6 @@ def ensure_ollama_running():
         except Exception as e:
             print(f"❌ 無法自動啟動 Ollama: {e}。請手動開啟 Ollama 應用程式。")
     return False
-
-# 在加載模組前自動確保 Ollama 正在運行
-ensure_ollama_running()
 
 from rank_bm25 import BM25Okapi
 from langchain_core.documents import Document
@@ -97,24 +95,137 @@ def _detect_priority_source(query: str) -> str:
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
-# 初始化地端嵌入模型
-# 使用 Ollama 的 nomic-embed-text，此模型專為文本嵌入設計，適合地端高效執行。
-embeddings = OllamaEmbeddings(
-    model="nomic-embed-text",
-    base_url="http://localhost:11434"
-)
+_embeddings = None
+_llm = None
+_db = None
+_ollama_checked = False
+_status_cache = None
+_status_cache_at = 0.0
+_STATUS_CACHE_TTL_SECONDS = 5.0
+_bm25_cache = {
+    "db_id": None,
+    "pdf_texts": [],
+    "pdf_metadatas": [],
+    "bm25_pdf": None,
+}
+_title_mapping_cache = {
+    "mtime_ns": None,
+    "mapping": {},
+}
 
-# 初始化地端 LLM 引擎 (使用 gemma3)
-llm = ChatOllama(
-    model="gemma3",
-    base_url="http://localhost:11434",
-    temperature=0.0  # 設為 0 以獲得最穩定、不隨機且不產生幻覺的回答
-)
+def _get_pdf_files() -> list:
+    return sorted([f for f in os.listdir(DATA_DIR) if f.endswith(".pdf")]) if os.path.exists(DATA_DIR) else []
+
+def _get_faq_signature() -> Optional[dict]:
+    faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
+    if not os.path.exists(faq_cache_path):
+        return None
+    stat = os.stat(faq_cache_path)
+    return {
+        "file": "faq_cache.json",
+        "mtime_ns": stat.st_mtime_ns,
+        "size": stat.st_size,
+    }
+
+def _build_db_meta(pdf_files: list) -> dict:
+    return {
+        "files": pdf_files,
+        "faq_signature": _get_faq_signature(),
+    }
+
+def _is_db_meta_current(db_meta: dict, pdf_files: list) -> bool:
+    return db_meta.get("files", []) == pdf_files and db_meta.get("faq_signature") == _get_faq_signature()
+
+def _clear_runtime_caches(clear_db: bool = False):
+    global _db, _status_cache, _status_cache_at, _bm25_cache
+    if clear_db:
+        _db = None
+    _status_cache = None
+    _status_cache_at = 0.0
+    _bm25_cache = {
+        "db_id": None,
+        "pdf_texts": [],
+        "pdf_metadatas": [],
+        "bm25_pdf": None,
+    }
+
+def _clean_pdf_text(text: str) -> str:
+    """修正常見 PDF ligature/編碼破碎字元。"""
+    if not text:
+        return text
+    replacements = {
+        '\u014c': 'ft',  # Ō -> ft (after)
+        '\u019f': 'ti',  # Ɵ -> ti (national)
+        '\u01a9': 'tt',  # Ʃ -> tt (attend)
+        '\ufb00': 'ff',
+        '\ufb01': 'fi',
+        '\ufb02': 'fl',
+        '\ufb03': 'ffi',
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    return text
+
+def _get_title_mapping() -> dict:
+    """讀取並快取檔名到法規標題的對照表。"""
+    global _title_mapping_cache
+    mapping_path = os.path.join(os.path.dirname(__file__), 'title_mapping.json')
+    if not os.path.exists(mapping_path):
+        _title_mapping_cache = {"mtime_ns": None, "mapping": {}}
+        return {}
+
+    mtime_ns = os.stat(mapping_path).st_mtime_ns
+    if _title_mapping_cache["mtime_ns"] == mtime_ns:
+        return _title_mapping_cache["mapping"]
+
+    try:
+        with open(mapping_path, 'r', encoding='utf-8') as f:
+            mapping = json.load(f)
+    except Exception:
+        mapping = {}
+
+    _title_mapping_cache = {
+        "mtime_ns": mtime_ns,
+        "mapping": mapping,
+    }
+    return mapping
+
+def get_embeddings():
+    """延遲載入並取得地端嵌入模型，只在需要時檢查 Ollama"""
+    global _embeddings, _ollama_checked
+    if _embeddings is None:
+        if not _ollama_checked:
+            ensure_ollama_running()
+            _ollama_checked = True
+        # 初始化地端嵌入模型
+        # 使用 Ollama 的 nomic-embed-text，此模型專為文本嵌入設計，適合地端高效執行。
+        _embeddings = OllamaEmbeddings(
+            model="nomic-embed-text",
+            base_url="http://localhost:11434"
+        )
+    return _embeddings
+
+def get_llm():
+    """延遲載入並取得地端 LLM，只在需要時檢查 Ollama"""
+    global _llm, _ollama_checked
+    if _llm is None:
+        if not _ollama_checked:
+            ensure_ollama_running()
+            _ollama_checked = True
+        # 初始化地端 LLM 引擎 (使用 gemma3)
+        _llm = ChatOllama(
+            model="gemma3",
+            base_url="http://localhost:11434",
+            temperature=0.0  # 設為 0 以獲得最穩定、不隨機且不產生幻覺的回答
+        )
+    return _llm
 
 def init_vector_db(force_rebuild: bool = False):
     """初始化並建立向量資料庫，並在 PDF 檔案有變動時自動重建"""
+    global _db
+
     # 檢查是否有 PDF 檔案
-    pdf_files = sorted([f for f in os.listdir(DATA_DIR) if f.endswith(".pdf")]) if os.path.exists(DATA_DIR) else []
+    pdf_files = _get_pdf_files()
     
     # 記錄已加載的 PDF 列表的 meta 檔路徑
     meta_path = os.path.join(CHROMA_DIR, "db_meta.json")
@@ -131,19 +242,22 @@ def init_vector_db(force_rebuild: bool = False):
                 try:
                     with open(meta_path, 'r', encoding='utf-8') as f:
                         db_meta = json.load(f)
-                    loaded_files = db_meta.get("files", [])
-                    # 如果檔案列表不一致，需要重建
-                    if loaded_files != pdf_files:
+                    # 如果 PDF 或 FAQ 快取簽章不一致，需要重建
+                    if not _is_db_meta_current(db_meta, pdf_files):
                         need_rebuild = True
                 except Exception:
                     need_rebuild = True
             else:
                 need_rebuild = True
+
+    if _db is not None and not need_rebuild:
+        return _db
                 
     # 如果需要重建且有 PDF 檔案，先刪除舊庫並重建
     if need_rebuild and pdf_files:
-        print("🔄 偵測到 PDF 檔案變動，正在重建向量資料庫...")
+        print("🔄 偵測到 PDF 或 FAQ 檔案變動，正在重建向量資料庫...")
         import shutil
+        _clear_runtime_caches(clear_db=True)
         if os.path.exists(CHROMA_DIR):
             try:
                 shutil.rmtree(CHROMA_DIR)
@@ -159,13 +273,7 @@ def init_vector_db(force_rebuild: bool = False):
         # 終極 PDF 編碼與 Ligature 合字清洗器，還原被破壞的英文單字，使地端 LLM 能正確閱讀理解
         for doc in documents:
             if doc.page_content:
-                doc.page_content = doc.page_content.replace('\u014c', 'ft')  # Ō -> ft (after)
-                doc.page_content = doc.page_content.replace('\u019f', 'ti')  # Ɵ -> ti (national)
-                doc.page_content = doc.page_content.replace('\u01a9', 'tt')  # Ʃ -> tt (attend)
-                doc.page_content = doc.page_content.replace('\ufb00', 'ff')  # ﬀ -> ff
-                doc.page_content = doc.page_content.replace('\ufb01', 'fi')  # ﬁ -> fi
-                doc.page_content = doc.page_content.replace('\ufb02', 'fl')  # ﬂ -> fl
-                doc.page_content = doc.page_content.replace('\ufb03', 'ffi') # ﬃ -> ffi
+                doc.page_content = _clean_pdf_text(doc.page_content)
         
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
@@ -187,14 +295,7 @@ def init_vector_db(force_rebuild: bool = False):
                     original_content = entry.get("content", "")
                     
                     # 對既有快取中的原文做終極防禦性 Ligature 清洗，還原破碎英文
-                    if original_content:
-                        original_content = original_content.replace('\u014c', 'ft')
-                        original_content = original_content.replace('\u019f', 'ti')
-                        original_content = original_content.replace('\u01a9', 'tt')
-                        original_content = original_content.replace('\ufb00', 'ff')
-                        original_content = original_content.replace('\ufb01', 'fi')
-                        original_content = original_content.replace('\ufb02', 'fl')
-                        original_content = original_content.replace('\ufb03', 'ffi')
+                    original_content = _clean_pdf_text(original_content)
                         
                     for faq_q in entry.get("faqs", []):
                         if faq_q.strip():
@@ -215,7 +316,7 @@ def init_vector_db(force_rebuild: bool = False):
         all_docs = chunks + faq_docs
         db = Chroma.from_documents(
             documents=all_docs,
-            embedding=embeddings,
+            embedding=get_embeddings(),
             persist_directory=CHROMA_DIR
         )
         
@@ -223,21 +324,23 @@ def init_vector_db(force_rebuild: bool = False):
         os.makedirs(CHROMA_DIR, exist_ok=True)
         try:
             with open(meta_path, 'w', encoding='utf-8') as f:
-                json.dump({"files": pdf_files}, f, ensure_ascii=False, indent=4)
+                json.dump(_build_db_meta(pdf_files), f, ensure_ascii=False, indent=4)
         except Exception as e:
             print(f"⚠️ 寫入 db_meta.json 失敗: {e}")
             
+        _db = db
         return db
     
     # 如果不需要重建且資料庫存在，直接載入
     if os.path.exists(CHROMA_DIR) and len(os.listdir(CHROMA_DIR)) > 0:
-        return Chroma(persist_directory=CHROMA_DIR, embedding_function=embeddings)
+        _db = Chroma(persist_directory=CHROMA_DIR, embedding_function=get_embeddings())
+        return _db
     
     return None
 
 def check_vector_db_status() -> dict:
     """檢查向量資料庫的狀態與 PDF 文件是否一致"""
-    pdf_files = sorted([f for f in os.listdir(DATA_DIR) if f.endswith(".pdf")]) if os.path.exists(DATA_DIR) else []
+    pdf_files = _get_pdf_files()
     
     if not pdf_files:
         return {"status": "empty", "files": []}
@@ -253,8 +356,7 @@ def check_vector_db_status() -> dict:
         try:
             with open(meta_path, 'r', encoding='utf-8') as f:
                 db_meta = json.load(f)
-            loaded_files = db_meta.get("files", [])
-            if loaded_files == pdf_files:
+            if _is_db_meta_current(db_meta, pdf_files):
                 return {"status": "ready", "files": pdf_files}
             else:
                 return {"status": "outdated", "files": pdf_files}
@@ -344,6 +446,36 @@ def rrf_fusion(dense_results_list: list, sparse_results_list: list, k: int = 60)
     sorted_docs = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
     return [doc_map[doc_id] for doc_id, score in sorted_docs]
 
+def _get_pdf_bm25_index(db) -> dict:
+    """取得 PDF chunk 的 BM25 索引；同一個 Chroma 實例只建立一次。"""
+    global _bm25_cache
+    if _bm25_cache["db_id"] == id(db):
+        return _bm25_cache
+
+    all_data = db.get()
+    all_texts = all_data.get("documents", [])
+    all_metadatas = all_data.get("metadatas", [])
+
+    pdf_texts = []
+    pdf_metadatas = []
+    for txt, meta in zip(all_texts, all_metadatas):
+        if not meta.get("faq_question"):
+            pdf_texts.append(txt)
+            pdf_metadatas.append(meta)
+
+    bm25_pdf = None
+    if pdf_texts:
+        tokenized_pdf_corpus = [list(jieba.cut(doc)) for doc in pdf_texts]
+        bm25_pdf = BM25Okapi(tokenized_pdf_corpus)
+
+    _bm25_cache = {
+        "db_id": id(db),
+        "pdf_texts": pdf_texts,
+        "pdf_metadatas": pdf_metadatas,
+        "bm25_pdf": bm25_pdf,
+    }
+    return _bm25_cache
+
 def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_expansion: bool = False):
     """查詢 RAG 系統並以生成器方式返回 metadata 與答案字元流 (支援 RRF 融合排序、查詢擴展與 Gemini API 備援)"""
     # 1. 檢索本地向量資料庫（PDF 知識庫）
@@ -369,31 +501,17 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     else:
         queries = generate_expanded_queries(user_query, api_key)
     
-    # 3. 讀取向量資料庫中所有文件（用於雙庫分離策略）
-    all_data = db.get()
-    all_texts = all_data["documents"]
-    all_metadatas = all_data["metadatas"]
-    
+    # 3. 取得快取過的 PDF BM25 索引（避免每題都重建稀疏檢索語料庫）
+    bm25_index = _get_pdf_bm25_index(db)
+    pdf_texts = bm25_index["pdf_texts"]
+    pdf_metadatas = bm25_index["pdf_metadatas"]
+    bm25_pdf = bm25_index["bm25_pdf"]
 
     # 4. 多重查詢檢索（雙庫分離策略：FAQ 語意命中 + PDF 法規原文）
     # 使用 Python 層手動過濾，一次取 k=20 結果後分類
     faq_dense_lists = []    # FAQ 口語問題命中結果
     pdf_dense_lists = []    # PDF 法規原文命中結果
     pdf_sparse_lists = []   # PDF BM25 關鍵字命中結果
-    
-    # 分離 BM25 語料庫為 PDF chunk 部分
-    pdf_texts = []
-    pdf_metadatas = []
-    for txt, meta in zip(all_texts, all_metadatas):
-        if not meta.get("faq_question"):
-            pdf_texts.append(txt)
-            pdf_metadatas.append(meta)
-    
-    if pdf_texts:
-        tokenized_pdf_corpus = [list(jieba.cut(doc)) for doc in pdf_texts]
-        bm25_pdf = BM25Okapi(tokenized_pdf_corpus)
-    else:
-        bm25_pdf = None
     
     for q in queries:
         # 一次取得較多結果，再在 Python 層手動分類（避免 Chroma filter 版本相容問題）
@@ -467,14 +585,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
         return
         
     # 載入檔名與真實標題的映射
-    mapping_path = os.path.join(os.path.dirname(__file__), 'title_mapping.json')
-    title_mapping = {}
-    if os.path.exists(mapping_path):
-        try:
-            with open(mapping_path, 'r', encoding='utf-8') as f:
-                title_mapping = json.load(f)
-        except Exception:
-            pass
+    title_mapping = _get_title_mapping()
             
     # 合併檢索到的 context 文字與資訊來源
     context_parts = []
@@ -614,7 +725,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     if not use_gemini:
         # 呼叫地端 Ollama 串流
         formatted_prompt = prompt.invoke({"context": context_text, "input": user_query})
-        for chunk in llm.stream(formatted_prompt):
+        for chunk in get_llm().stream(formatted_prompt):
             if chunk.content:
                 yield {
                     "type": "content",
@@ -655,3 +766,53 @@ def query_rag(user_query: str, api_key: str = None, db = None, disable_expansion
         "engine_type": engine_type,
         "expanded_queries": expanded_queries
     }
+
+def get_full_system_status() -> dict:
+    """彙整並回傳系統完整狀態，包括向量庫健康度、載入法規名稱、FAQ 數量與 Ollama 狀態"""
+    global _status_cache, _status_cache_at
+
+    now = time.time()
+    if _status_cache is not None and now - _status_cache_at < _STATUS_CACHE_TTL_SECONDS:
+        return dict(_status_cache)
+
+    # 1. 取得向量庫狀態與原始 PDF 列表
+    db_status_info = check_vector_db_status()
+    db_status = db_status_info.get("status", "empty")
+    raw_files = db_status_info.get("files", [])
+    
+    # 2. 載入標題對照表並轉換檔名
+    title_mapping = _get_title_mapping()
+            
+    loaded_files = [title_mapping.get(f, f) for f in raw_files]
+    
+    # 3. 統計 FAQ 數量
+    faq_count = 0
+    faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
+    if os.path.exists(faq_cache_path):
+        try:
+            with open(faq_cache_path, 'r', encoding='utf-8') as f:
+                faq_cache = json.load(f)
+            for entry in faq_cache.values():
+                faq_count += len([q for q in entry.get("faqs", []) if q.strip()])
+        except Exception:
+            pass
+            
+    # 4. 偵測 Ollama 在線狀態 (不嘗試自動開啟，僅快速探測)
+    ollama_status = "offline"
+    try:
+        with urllib.request.urlopen("http://localhost:11434", timeout=0.5) as response:
+            if response.status == 200:
+                ollama_status = "online"
+    except Exception:
+        pass
+        
+    status = {
+        "db_status": db_status,
+        "pdf_count": len(raw_files),
+        "faq_count": faq_count,
+        "ollama_status": ollama_status,
+        "loaded_files": loaded_files
+    }
+    _status_cache = dict(status)
+    _status_cache_at = now
+    return status

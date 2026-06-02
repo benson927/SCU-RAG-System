@@ -3,8 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import List
 import json
-import os
-from backend.services.rag_service import query_rag, query_rag_stream
+from backend.services.rag_service import query_rag, query_rag_stream, get_full_system_status
 
 router = APIRouter()
 
@@ -16,7 +15,7 @@ class RAGQueryRequest(BaseModel):
 
 class RAGQueryResponse(BaseModel):
     answer: str = Field(..., description="RAG 系統產生的回答")
-    sources: List[str] = Field(default=[], description="參考的資料來源（例如 PDF 檔案名稱與頁數）")
+    sources: List[str] = Field(default_factory=list, description="參考的資料來源（例如 PDF 檔案名稱與頁數）")
 
 @router.post("/rag", response_model=RAGQueryResponse)
 async def handle_rag_query(request: RAGQueryRequest):
@@ -63,3 +62,10 @@ async def handle_rag_query_stream(request: RAGQueryRequest):
             yield f"data: {json.dumps(err_msg, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@router.get("/status")
+async def get_system_status():
+    try:
+        return get_full_system_status()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"獲取系統狀態失敗: {str(e)}")
