@@ -73,6 +73,13 @@ function App() {
   const statusCheckRef = useRef(null);
   const isCloudMode = !forceLocal && geminiKey.trim();
   const activeEngineName = isCloudMode ? "Gemini 2.5 Flash" : "Gemma 3 (Ollama)";
+  const canAskQuestion = backendStatus === "online" && dbStatus !== "empty";
+  const inputPlaceholder = (() => {
+    if (backendStatus !== "online") return "請先啟動本地 FastAPI 後端服務以啟用輸入...";
+    if (dbStatus === "empty") return "知識庫尚未載入，請先將 PDF 放入 data/ 資料夾...";
+    if (dbStatus === "outdated") return "偵測到法規變更，首次提問會先更新知識庫...";
+    return "請輸入關於法規或文檔的問題... (例如：宿舍退宿的退費標準是什麼？)";
+  })();
 
   // 簡報鍵盤事件監聽 (左右方向鍵換頁，Esc 關閉)
   useEffect(() => {
@@ -158,7 +165,7 @@ function App() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !canAskQuestion) return;
 
     const userQuery = input.trim();
     setInput("");
@@ -600,18 +607,14 @@ function App() {
           <form className="chat-input-area" onSubmit={handleSubmit}>
             <input
               type="text"
-              placeholder={
-                backendStatus === "online" 
-                  ? "請輸入關於法規或文檔的問題... (例如：宿舍退宿的退費標準是什麼？)" 
-                  : "請先啟動本地 FastAPI 後端服務以啟用輸入..."
-              }
+              placeholder={inputPlaceholder}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              disabled={isLoading || backendStatus !== "online"}
+              disabled={isLoading || !canAskQuestion}
             />
             <button 
               type="submit" 
-              disabled={!input.trim() || isLoading || backendStatus !== "online"}
+              disabled={!input.trim() || isLoading || !canAskQuestion}
               className="send-btn"
             >
               <span>發送</span>
