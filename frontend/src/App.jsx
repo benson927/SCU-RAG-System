@@ -30,6 +30,21 @@ const renderMarkdown = (text) => {
   return processedLines.join("");
 };
 
+const getFriendlyErrorMessage = (error) => {
+  if (error?.name === "AbortError") return "";
+
+  if (error?.message?.includes("HTTP")) {
+    return "目前伺服器有收到問題，但回應沒有成功完成。請先確認知識庫狀態為「已載入」，再重新送出一次。";
+  }
+
+  return [
+    "目前無法完成回答，請先檢查展示環境是否就緒：",
+    "- FastAPI 後端服務是否已啟動。",
+    "- 知識庫狀態是否顯示已載入 PDF 與 FAQ。",
+    "- 若使用純地端模式，請確認 Ollama 已啟動；若使用雲端加速模式，請確認 Gemini API Key 可用。"
+  ].join("\n");
+};
+
 function App() {
   const [messages, setMessages] = useState([
     {
@@ -178,7 +193,7 @@ function App() {
       });
 
       if (!response.ok) {
-        throw new Error("後端 API 回應錯誤");
+        throw new Error(`HTTP ${response.status}`);
       }
 
       const reader = response.body.getReader();
@@ -232,7 +247,7 @@ function App() {
                 finalAnswer += parsed.content;
                 scheduleAssistantUpdate();
               } else if (parsed.type === "error") {
-                finalAnswer += `\n❌ 錯誤：${parsed.content}`;
+                finalAnswer += `\n目前找不到可回答的依據：${parsed.content}`;
                 scheduleAssistantUpdate();
               }
             } catch (e) {
@@ -261,19 +276,20 @@ function App() {
         return;
       }
       console.error(error);
+      const friendlyMessage = getFriendlyErrorMessage(error);
       setMessages(prev => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
         if (updated[lastIdx]?.role === "assistant" && updated[lastIdx]?.content === "") {
           updated[lastIdx] = {
             role: "assistant",
-            content: "❌ 系統推論出錯。請確認：\n1. 後端 FastAPI 服務是否已啟動。\n2. 本地 Ollama 是否運行，且已拉取 `gemma3` 與 `nomic-embed-text` 模型。\n3. `data/` 資料夾下是否有放 PDF 檔案並成功解析。",
+            content: friendlyMessage,
             sources: []
           };
         } else {
           updated.push({
             role: "assistant",
-            content: "❌ 系統推論中斷。連線可能已異常斷開。",
+            content: friendlyMessage || "回答中斷，請重新送出一次問題。",
             sources: []
           });
         }
