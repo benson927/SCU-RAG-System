@@ -115,10 +115,10 @@ function App() {
         void checkStatus();
       }
     };
-    // 每 10 秒自動檢查一次連線狀態
+    // 每 30 秒自動檢查一次連線狀態，降低 demo 時對後端健康檢查的干擾
     const interval = window.setInterval(() => {
       checkWhenVisible();
-    }, 10000);
+    }, 30000);
     document.addEventListener("visibilitychange", checkWhenVisible);
     return () => {
       window.clearTimeout(initialCheck);
