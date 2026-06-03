@@ -3,31 +3,306 @@ import "./App.css";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 
+const SAMPLE_QUESTIONS = [
+  "期末考請假期限是多久？要送去哪裡審核？",
+  "拿到端木愷校長獎學金後，下學期學業成績平均要幾分才能續領？",
+  "宿舍輔導或管理人員在未獲得學生同意下，可以隨意進入寢室檢查嗎？",
+];
+
+const QUESTION_SCOPES = [
+  {
+    label: "獎助學金與獎勵",
+    keywords: ["獎", "獎助學金", "優秀", "端木愷", "研究生", "新生", "畢業生"],
+    examples: [
+      "端木愷校長獎學金的續領條件是什麼？",
+      "研究生獎助學金怎麼分配？",
+    ],
+  },
+  {
+    label: "請假與考試假",
+    keywords: ["請假", "Leave"],
+    examples: [
+      "期末考請假期限是多久？",
+      "病假最晚要在什麼期限內辦理？",
+    ],
+  },
+  {
+    label: "工讀助學",
+    keywords: ["工讀"],
+    examples: [
+      "學生工讀時薪是多少？",
+      "申請工讀助學需要符合什麼條件？",
+    ],
+  },
+  {
+    label: "住宿與宿舍管理",
+    keywords: ["宿舍", "住宿"],
+    examples: [
+      "宿舍輔導人員可以進入寢室檢查嗎？",
+      "校外宿舍管理有哪些規定？",
+    ],
+  },
+  {
+    label: "社團、學生會與會費",
+    keywords: ["社團", "學生會", "會費"],
+    examples: [
+      "社團成立需要符合什麼規定？",
+      "學生會費如何代收？",
+    ],
+  },
+  {
+    label: "獎懲、銷過與申訴",
+    keywords: ["獎懲", "銷過", "申訴"],
+    examples: [
+      "學生銷過需要符合什麼條件？",
+      "學生獎懲委員會如何組成？",
+    ],
+  },
+  {
+    label: "導師與校園行政規章",
+    keywords: ["導師", "甄選委員會", "章程"],
+    examples: [
+      "優良導師獎勵的評選方式是什麼？",
+      "獎助學金甄選委員會如何組成？",
+    ],
+  },
+];
+
+const getVisibleQuestionScopes = (loadedFiles) => {
+  if (!loadedFiles?.length) {
+    return QUESTION_SCOPES.slice(0, 5);
+  }
+
+  const fileText = loadedFiles.join(" ");
+  const matched = QUESTION_SCOPES.filter(scope =>
+    scope.keywords.some(keyword => fileText.includes(keyword))
+  );
+  return matched.length ? matched : QUESTION_SCOPES.slice(0, 5);
+};
+
+const CHINESE_ENUMERATORS = "一二三四五六七八九十";
+
+const IMPORTANT_TERMS = [
+  "不可以",
+  "可以",
+  "不得",
+  "不得隨意",
+  "不得隨意進入",
+  "必須",
+  "未獲得學生同意",
+  "未獲同意",
+  "學生同意",
+  "特殊危急狀況",
+  "特殊危急",
+  "事後",
+  "書面報告",
+  "事後書面報告",
+  "核定",
+  "核准",
+  "審核",
+  "學系主任",
+  "教務處",
+  "學生事務處",
+  "學生事務長",
+  "住宿學生",
+  "學生寢室",
+  "寢室檢查",
+  "個人隱私",
+  "公共安全",
+  "五個工作日內",
+  "五個工作日",
+  "一週內",
+  "續領",
+  "不得續領",
+  "無懲處紀錄",
+  "懲處紀錄",
+  "學業成績平均",
+  "全班排名",
+  "前10%",
+  "前10％",
+  "80分（含）以上",
+  "80分(含)以上",
+  "八十五分以上",
+  "85分以上",
+];
+
+const IMPORTANT_PATTERNS = [
+  /\d+\s*分\s*[（(]含[）)]\s*以上/g,
+  /\d+\s*分\s*以上/g,
+  /前\s*\d+\s*[%％]\s*[（(]含[）)]?/g,
+  /前\s*\d+\s*[%％]/g,
+  /第\s*\d+\s*名/g,
+  /新臺幣\s*\d+\s*(?:萬)?元/g,
+  /\d+\s*(?:萬)?元/g,
+  /\d+\s*個工作日內/g,
+  /\d+\s*日內/g,
+  /\d+\s*週內/g,
+];
+
+const highlightImportantTerms = (text) => {
+  if (!text) return "";
+
+  const importantTermsPattern = new RegExp(
+    IMPORTANT_TERMS
+      .slice()
+      .sort((a, b) => b.length - a.length)
+      .map(term => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|"),
+    "g"
+  );
+
+  const segments = text.split(/(\*\*.*?\*\*)/g);
+  return segments.map((segment) => {
+    if (segment.startsWith("**") && segment.endsWith("**")) return segment;
+
+    const withTerms = segment.replace(importantTermsPattern, (match) => `**${match}**`);
+    return IMPORTANT_PATTERNS.reduce((value, pattern) => {
+      const parts = value.split(/(\*\*.*?\*\*)/g);
+      return parts.map((part) => {
+        if (part.startsWith("**") && part.endsWith("**")) return part;
+        return part.replace(pattern, (match) => `**${match}**`);
+      }).join("");
+    }, withTerms);
+  }).join("");
+};
+
+const normalizeAnswerText = (text) => {
+  if (!text) return "";
+
+  return highlightImportantTerms(text)
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => {
+      let normalized = line.trim();
+
+      normalized = normalized.replace(
+        new RegExp(`([^\\n])\\s+([${CHINESE_ENUMERATORS}]+、)`, "g"),
+        "$1\n$2"
+      );
+      normalized = normalized.replace(
+        new RegExp(`(^|\\n)([${CHINESE_ENUMERATORS}]+、)\\s*`, "g"),
+        "$1- "
+      );
+      normalized = normalized.replace(
+        /([^：:])\s+(（[一二三四五六七八九十]+）)/g,
+        "$1\n$2"
+      );
+      normalized = normalized.replace(
+        /(^|\n)（([一二三四五六七八九十]+)）\s*/g,
+        "$1- "
+      );
+      normalized = normalized.replace(
+        /(^|\n)(\d+[.．、])\s*/g,
+        "$1- "
+      );
+
+      return normalized;
+    })
+    .join("\n");
+};
+
 // 輕量手繪風 Markdown 解析器 (零套件依賴，實現螢光筆劃重點)
 const renderMarkdown = (text) => {
   if (!text) return "";
-  
-  // 1. 安全逸出 HTML 特殊字元
-  let html = text
+
+  const escapeHtml = (value) => value
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-    
-  // 2. 粗體替換為手繪螢光筆 strong 標記
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong class="manga-highlight">$1</strong>');
-  
-  // 3. 按行處理列表與段落
-  const lines = html.split("\n");
-  const processedLines = lines.map(line => {
+
+  const renderInline = (value) => escapeHtml(value)
+    .replace(/`([^`]+)`/g, '<code class="manga-code">$1</code>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="manga-highlight">$1</strong>');
+
+  const blocks = [];
+  let paragraphLines = [];
+  let listItems = [];
+  let skipInternalSourceBlock = false;
+
+  const flushParagraph = () => {
+    if (paragraphLines.length === 0) return;
+    blocks.push(`<p class="manga-p">${renderInline(paragraphLines.join(" "))}</p>`);
+    paragraphLines = [];
+  };
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    const items = listItems
+      .map(item => `<li class="manga-li">${renderInline(item)}</li>`)
+      .join("");
+    blocks.push(`<ul class="manga-list">${items}</ul>`);
+    listItems = [];
+  };
+
+  normalizeAnswerText(text).split("\n").forEach((line) => {
     const trimmed = line.trim();
-    if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
-      const content = trimmed.substring(2);
-      return `<li class="manga-li">${content}</li>`;
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      skipInternalSourceBlock = false;
+      return;
     }
-    return `<p class="manga-p">${line}</p>`;
+
+    if (/^(來源|資料來源|參考文獻|參考文獻出處|可用來源清單)\s*[:：]/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      skipInternalSourceBlock = true;
+      return;
+    }
+
+    if (/^-{3,}$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      if (skipInternalSourceBlock) {
+        skipInternalSourceBlock = false;
+        return;
+      }
+      skipInternalSourceBlock = false;
+      blocks.push('<hr class="manga-separator" />');
+      return;
+    }
+
+    if (skipInternalSourceBlock && /^[-*]\s+/.test(trimmed)) {
+      return;
+    }
+
+    skipInternalSourceBlock = false;
+
+    const headingMatch = trimmed.match(/^#{2,4}\s+(.+)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<h4 class="manga-heading">${renderInline(headingMatch[1])}</h4>`);
+      return;
+    }
+
+    if (/^(重點整理|申請資格|辦理流程|注意事項|組成方式|續領條件|回答|結論)[:：]$/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<h4 class="manga-heading">${renderInline(trimmed.replace(/[:：]$/, ""))}</h4>`);
+      return;
+    }
+
+    const bulletMatch = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bulletMatch) {
+      flushParagraph();
+      listItems.push(bulletMatch[1]);
+      return;
+    }
+
+    if (listItems.length > 0) {
+      listItems[listItems.length - 1] = `${listItems[listItems.length - 1]} ${trimmed}`;
+      return;
+    }
+
+    paragraphLines.push(trimmed);
   });
-  
-  return processedLines.join("");
+
+  flushParagraph();
+  flushList();
+
+  return blocks.join("");
 };
 
 const getFriendlyErrorMessage = (error) => {
@@ -49,7 +324,7 @@ function App() {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      content: "您好！我是您的地端企業知識庫助手。請將 PDF 檔案放入專案根目錄的 `data/` 資料夾，即可開始向我詢問其中的內容。我會嚴格基於文件原文回答您，並提供來源出處。",
+      content: "您好！我是**東吳規章智慧導航員**。您可以詢問已載入法規中的獎助學金、請假、工讀、宿舍、社團、獎懲等問題；我會依據文件原文回答，並在下方標示參考來源。",
       sources: []
     }
   ]);
@@ -58,6 +333,7 @@ function App() {
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [backendStatus, setBackendStatus] = useState("checking"); // checking, online, offline
   const [showLaws, setShowLaws] = useState(false);
+  const [showScopes, setShowScopes] = useState(false);
   const [showPDFModal, setShowPDFModal] = useState(false); // 新增 PDF 彈窗狀態控制
   const [slideIndex, setSlideIndex] = useState(0); // 新增當前投影片索引狀態
   const [showConfig, setShowConfig] = useState(false); // 新增系統配置面板折疊狀態
@@ -70,11 +346,19 @@ function App() {
   const [ollamaStatus, setOllamaStatus] = useState("offline"); // online, offline
   const [loadedFiles, setLoadedFiles] = useState([]);
   const chatEndRef = useRef(null);
+  const inputRef = useRef(null);
   const ragAbortRef = useRef(null);
   const statusCheckRef = useRef(null);
   const isCloudMode = !forceLocal && geminiKey.trim();
   const activeEngineName = isCloudMode ? "Gemini 2.5 Flash" : "Gemma 3 (Ollama)";
   const canAskQuestion = backendStatus === "online" && dbStatus !== "empty";
+  const visibleQuestionScopes = getVisibleQuestionScopes(loadedFiles);
+  const inputHelpText = (() => {
+    if (backendStatus !== "online") return "後端尚未連線，請先啟動 FastAPI。";
+    if (dbStatus === "empty") return "知識庫尚未載入，請先放入 PDF。";
+    if (dbStatus === "outdated") return "偵測到法規變更，首次提問會自動更新索引。";
+    return "";
+  })();
   const inputPlaceholder = (() => {
     if (backendStatus !== "online") return "請先啟動本地 FastAPI 後端服務以啟用輸入...";
     if (dbStatus === "empty") return "知識庫尚未載入，請先將 PDF 放入 data/ 資料夾...";
@@ -316,14 +600,22 @@ function App() {
   const clearChat = () => {
     ragAbortRef.current?.abort();
     ragAbortRef.current = null;
+    setInput("");
     setIsLoading(false);
     setMessages([
       {
         role: "assistant",
-        content: "對話歷史已清除。請問有什麼我可以協助您的？",
+        content: "對話歷史已清除。您可以從左側「可詢問範圍」挑選範例，或直接輸入想查的東吳規章問題。",
         sources: []
       }
     ]);
+  };
+
+  const handleSampleQuestion = (question) => {
+    setInput(question);
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
   };
 
   return (
@@ -333,7 +625,7 @@ function App() {
         <div className="header-left">
           <span className="logo-emoji">🎓</span>
           <h1>SCU Local <span className="highlight">RAG</span></h1>
-          <span className="subtitle">企業內部知識庫</span>
+          <span className="subtitle">校園規章知識庫</span>
         </div>
         <div className="header-right">
           <div className={`status-badge ${backendStatus}`}>
@@ -422,6 +714,39 @@ function App() {
                   <li style={{ fontStyle: "italic", opacity: 0.6, listStyleType: "none" }}>無已載入法規</li>
                 )}
               </ul>
+            )}
+          </div>
+
+          {/* 可詢問範圍 */}
+          <div className="sidebar-card scope-card">
+            <div className="scope-header" onClick={() => setShowScopes(!showScopes)}>
+              <h3>🧭 可詢問範圍</h3>
+              <span className={`arrow ${showScopes ? "open" : ""}`}>{showScopes ? "▲" : "▼"}</span>
+            </div>
+            <div className="scope-summary">
+              <span className="pulse-dot"></span>
+              <span>{visibleQuestionScopes.length} 類主題可詢問</span>
+            </div>
+            {showScopes && (
+              <div className="scope-list">
+                {visibleQuestionScopes.map((scope) => (
+                  <div className="scope-item" key={scope.label}>
+                    <div className="scope-label">{scope.label}</div>
+                    <div className="scope-examples">
+                      {scope.examples.slice(0, 2).map((question) => (
+                        <button
+                          key={question}
+                          type="button"
+                          className="scope-question-btn"
+                          onClick={() => handleSampleQuestion(question)}
+                        >
+                          {question}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
@@ -528,7 +853,7 @@ function App() {
             <button className="view-presentation-btn" onClick={() => setShowPDFModal(true)}>
               🌐 開啟專案簡報
             </button>
-            <button className="clear-history-btn" onClick={clearChat}>
+            <button className="clear-history-btn" onClick={clearChat} title="清除目前對話紀錄">
               🗑️ 清除對話紀錄
             </button>
           </div>
@@ -548,9 +873,17 @@ function App() {
                   <div className="welcome-tips">
                     💡 試試提問這些東吳規章問題：
                     <ul>
-                      <li>期末考請假期限是多久？要送去哪裡審核？</li>
-                      <li>拿到端木愷校長獎學金後，下學期學業成績平均要幾分才能續領？</li>
-                      <li>宿舍輔導或管理人員在未獲得學生同意下，可以隨意進入寢室檢查嗎？</li>
+                      {SAMPLE_QUESTIONS.map((question) => (
+                        <li key={question}>
+                          <button
+                            type="button"
+                            className="sample-question-btn"
+                            onClick={() => handleSampleQuestion(question)}
+                          >
+                            {question}
+                          </button>
+                        </li>
+                      ))}
                     </ul>
                   </div>
                 </div>
@@ -574,9 +907,9 @@ function App() {
                     {/* 來源卡片 */}
                     {msg.sources && msg.sources.length > 0 && (
                       <div className="sources-section">
-                        <div className="sources-title">📌 參考文獻出處：</div>
+                        <div className="sources-title">📌 系統檢索來源：</div>
                         <div className="sources-list">
-                          {msg.sources.map((src, sIdx) => (
+                          {[...new Set(msg.sources)].map((src, sIdx) => (
                             <span key={sIdx} className="source-tag">
                               📄 {src}
                             </span>
@@ -608,23 +941,31 @@ function App() {
 
           {/* 輸入框 */}
           <form className="chat-input-area" onSubmit={handleSubmit}>
-            <input
-              type="text"
-              placeholder={inputPlaceholder}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={isLoading || !canAskQuestion}
-            />
-            <button 
-              type="submit" 
-              disabled={!input.trim() || isLoading || !canAskQuestion}
-              className="send-btn"
-            >
-              <span>發送</span>
-              <svg viewBox="0 0 24 24" width="16" height="16">
-                <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-              </svg>
-            </button>
+            {inputHelpText && (
+              <div className="input-help-text">{inputHelpText}</div>
+            )}
+            <div className="chat-input-row">
+              <input
+                ref={inputRef}
+                type="text"
+                placeholder={inputPlaceholder}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={isLoading || !canAskQuestion}
+              />
+              <button 
+                type="submit" 
+                disabled={!input.trim() || isLoading || !canAskQuestion}
+                className="send-btn"
+                title={canAskQuestion ? "送出問題" : "請先確認後端與知識庫狀態"}
+                aria-label="送出問題"
+              >
+                <span>{isLoading ? "思考中" : "發送"}</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+              </button>
+            </div>
           </form>
         </main>
       </div>

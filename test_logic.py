@@ -10,8 +10,13 @@ if _CURRENT_DIR not in sys.path:
 from backend.services import rag_service
 from backend.services.rag_service import (
     _bm25_top_pdf_docs,
+    _build_clarification_message,
+    _build_system_prompt,
+    _dedupe_documents_by_identity,
     _dedupe_queries,
     _detect_priority_source,
+    _is_under_specified_query,
+    _priority_source_pdf_docs,
     _retrieve_dense_candidates,
     _similarity_search_with_optional_filter,
     get_full_system_status,
@@ -83,6 +88,53 @@ class TestRAGPureLogic(unittest.TestCase):
         self.assertEqual(_detect_priority_source("東吳大學的校長是誰"), "")
         self.assertEqual(_detect_priority_source(""), "")
 
+    def test_under_specified_query_detection(self):
+        """過短關鍵字應先請使用者補充，避免模型對模糊問題硬答並產生幻覺"""
+        self.assertTrue(_is_under_specified_query("碩士"))
+        self.assertTrue(_is_under_specified_query("研究生"))
+        self.assertTrue(_is_under_specified_query(""))
+
+        self.assertFalse(_is_under_specified_query("碩士班優秀新生獎勵的申請資格是什麼？"))
+        self.assertFalse(_is_under_specified_query("研究生獎助學金怎麼分配？"))
+        self.assertFalse(_is_under_specified_query("工讀時薪是多少"))
+
+    def test_clarification_examples_follow_query_keyword(self):
+        """模糊查詢的追問範例應依關鍵字變化，不應固定顯示碩士獎學金例句"""
+        bachelor_message = _build_clarification_message("學士")
+        self.assertIn("學士班學生可以申請哪些獎助學金？", bachelor_message)
+        self.assertNotIn("碩士班優秀新生獎勵的申請資格是什麼？", bachelor_message)
+
+        dorm_message = _build_clarification_message("宿舍")
+        self.assertIn("校外宿舍可以隨意進入寢室檢查嗎？", dorm_message)
+
+        generic_message = _build_clarification_message("法規")
+        self.assertIn("法規相關規章的申請資格是什麼？", generic_message)
+
+    def test_prompt_does_not_leak_leave_rules_into_scholarship_questions(self):
+        """非請假問題不應帶入請假規則或錯誤來源範例，避免污染回答來源"""
+        prompt = _build_system_prompt(
+            "碩士班優秀新生獎勵的申請資格是什麼？",
+            ["東吳大學碩、博士班優秀新生獎勵辦法 (第 1 頁)"],
+        )
+
+        self.assertIn("東吳大學碩、博士班優秀新生獎勵辦法 (第 1 頁)", prompt)
+        self.assertIn("回答內文不要自行新增", prompt)
+        self.assertNotIn("學生請假規則", prompt)
+        self.assertNotIn("一般請假", prompt)
+        self.assertNotIn("五個工作日", prompt)
+        self.assertIn("至少標註 2 到 5 個重點", prompt)
+        self.assertIn("不得隨意進入", prompt)
+
+    def test_prompt_keeps_leave_rules_for_leave_questions(self):
+        """請假問題仍保留請假專用防混淆提示"""
+        prompt = _build_system_prompt(
+            "期末考請假期限是多久？",
+            ["學生請假規則 (第 3 頁)"],
+        )
+
+        self.assertIn("一般請假", prompt)
+        self.assertIn("五個工作日", prompt)
+
     def test_rrf_fusion(self):
         """測試 RRF (倒數排序融合) 演算法在多個密集/稀疏檢索結果下的融合與去重邏輯"""
         # 建立模擬的檢索結果 Document
@@ -132,6 +184,35 @@ class TestRAGPureLogic(unittest.TestCase):
 
         self.assertEqual(bm25.score_calls, 1)
         self.assertEqual([d.page_content for d in docs], ["doc3", "doc1", "doc4"])
+
+    def test_dedupe_documents_by_identity_prefers_unique_context(self):
+        """同一來源頁面與內容不應重複放入 Context"""
+        docs = [
+            Document(page_content="同一段法規內容", metadata={"source": "law.pdf", "page": 0}),
+            Document(page_content="同一段法規內容", metadata={"source": "law.pdf", "page": 0}),
+            Document(page_content="另一段內容", metadata={"source": "law.pdf", "page": 1}),
+        ]
+
+        deduped = _dedupe_documents_by_identity(docs)
+
+        self.assertEqual(len(deduped), 2)
+        self.assertEqual([doc.metadata["page"] for doc in deduped], [0, 1])
+
+    def test_priority_source_pdf_docs_falls_back_to_target_file(self):
+        """主題文件未被融合排序命中時，應能從指定 PDF 補回候選 chunks"""
+        bm25_index = {
+            "pdf_texts": ["宿舍檢查規定", "工讀時薪規定", "宿舍退費規定"],
+            "pdf_metadatas": [
+                {"source": "/data/dorm.pdf", "page": 0},
+                {"source": "/data/work.pdf", "page": 0},
+                {"source": "/data/dorm.pdf", "page": 1},
+            ],
+        }
+
+        docs = _priority_source_pdf_docs(bm25_index, "宿舍退費", "dorm.pdf", n=2)
+
+        self.assertEqual(len(docs), 2)
+        self.assertTrue(all("dorm.pdf" in doc.metadata["source"] for doc in docs))
 
     def test_dense_retrieval_uses_metadata_filters_when_supported(self):
         """Chroma filter 可用時，FAQ/PDF dense 檢索應分別限制 k，避免全量 k=30 搜尋"""

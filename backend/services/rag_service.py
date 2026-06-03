@@ -91,6 +91,151 @@ def _detect_priority_source(query: str) -> str:
             return source_file
     return ""
 
+def _is_under_specified_query(query: str) -> bool:
+    """判斷是否為過短或只像關鍵字的查詢，避免 RAG 對模糊詞硬生成答案。"""
+    cleaned = query.strip()
+    if not cleaned:
+        return True
+
+    question_markers = ("?", "？", "什麼", "如何", "怎麼", "幾", "多少", "是否", "可以", "能否", "期限", "標準", "條件", "辦法", "申請", "資格")
+    if any(marker in cleaned for marker in question_markers):
+        return False
+
+    compact = "".join(cleaned.split())
+    if len(compact) <= 4:
+        return True
+
+    tokens = [token for token in cleaned.replace("，", " ").replace(",", " ").split() if token]
+    return len(tokens) == 1 and len(compact) <= 8
+
+def _build_clarification_message(query: str) -> str:
+    """依照模糊關鍵字產生較貼近主題的追問範例。"""
+    keyword = query.strip() or "這個關鍵字"
+    examples_by_topic = [
+        (
+            {"學士", "大學部", "學生"},
+            [
+                "學士班學生可以申請哪些獎助學金？",
+                "學士班學生工讀時薪是多少？",
+                "學士班學生請假規定是什麼？",
+            ],
+        ),
+        (
+            {"碩士", "博士", "研究生"},
+            [
+                "碩士班優秀新生獎勵的申請資格是什麼？",
+                "研究生獎助學金怎麼分配？",
+                "碩士生續領獎學金需要達到什麼條件？",
+            ],
+        ),
+        (
+            {"獎學金", "獎助學金", "補助", "獎勵"},
+            [
+                "端木愷校長獎學金的續領條件是什麼？",
+                "研究生獎助學金怎麼分配？",
+                "優秀應屆畢業生獎勵的選拔資格是什麼？",
+            ],
+        ),
+        (
+            {"請假", "假", "缺課"},
+            [
+                "期末考請假期限是多久？",
+                "病假最晚要在什麼期限內辦理？",
+                "請假需要送到哪個單位核准？",
+            ],
+        ),
+        (
+            {"宿舍", "住宿", "寢室"},
+            [
+                "校外宿舍可以隨意進入寢室檢查嗎？",
+                "宿舍退宿或退費規定是什麼？",
+                "宿舍輔導與管理人員有哪些職責？",
+            ],
+        ),
+        (
+            {"工讀", "時薪", "打工"},
+            [
+                "學生工讀時薪是多少？",
+                "工讀助學金由哪個單位核發？",
+                "申請工讀助學需要符合什麼條件？",
+            ],
+        ),
+        (
+            {"社團", "學生會", "會費"},
+            [
+                "社團成立需要符合什麼規定？",
+                "學生會費如何代收？",
+                "社團活動申請流程是什麼？",
+            ],
+        ),
+    ]
+
+    examples = [
+        f"{keyword}相關規章的申請資格是什麼？",
+        f"{keyword}相關規定的辦理流程是什麼？",
+        f"{keyword}相關規定有哪些限制或條件？",
+    ]
+    for keywords, topic_examples in examples_by_topic:
+        if any(k in keyword for k in keywords):
+            examples = topic_examples
+            break
+
+    example_lines = "\n".join(f"- **{example}**" for example in examples)
+    return (
+        f"我目前只看到「{keyword}」這個較模糊的關鍵字，還不能判斷您要查哪一項規章。\n\n"
+        "請把問題問得更具體一點，例如：\n"
+        f"{example_lines}"
+    )
+
+def _is_leave_query(query: str) -> bool:
+    return any(k in query.lower() for k in ["假", "leave", "absent", "vacation", "sick"])
+
+def _build_system_prompt(user_query: str, sources: list) -> str:
+    """建立 RAG 生成提示；只在請假問題加入請假專用規則，避免污染其他主題。"""
+    source_list = "\n".join(f"- {source}" for source in sources) if sources else "- 無"
+    leave_rules = ""
+    if _is_leave_query(user_query):
+        leave_rules = (
+            "9. **嚴防期限與核定單位混淆**：不同假別（如「一般請假」與「學期考試請假」）的期限與核准單位分屬不同條文，**絕對不可混用**。請根據使用者所問的具體假別，找到該假別專屬的條文與期限進行回答：\n"
+            "   - **一般請假（如事假、病假、生理假等）**：最遲應於缺課次日起**一週內**完成辦理。\n"
+            "   - **學期考試（期末考）請假**：必須在考試結束後**五個工作日內**提出申請，由學系主任簽註意見並送**教務處**核定。\n"
+            "   - 若使用者詢問期末考、學期考試或考試請假期限，第一個重點必須明確寫出：期限是**考試結束後五個工作日內**，且是工作日，不是一般自然日。\n"
+        )
+    format_rule_number = "10" if leave_rules else "9"
+
+    return (
+        "你是一位嚴謹的東吳大學（Soochow University, SCU）學生事務知識庫助手。請根據以下提供的 Context（法規或問答內容）精準回答使用者的問題。\n"
+        "【嚴格要求】：\n"
+        "1. **校名不可改寫**：所有回答都必須以**東吳大學**為主體。不得寫成 National Taiwan University、NTU、台大或其他學校；Context 沒有出現的校名一律不可加入。\n"
+        "2. **必須使用繁體中文**：除非引用文件原文中的英文專有名詞，否則回答不可使用英文開場、英文標題或英文整段說明。\n"
+        "3. **完全基於事實**：僅根據 Context 內有的內容回答。不可憑空想像、推論或加入外部知識。答案必須精準，不可過度推論。若 Context 中包含原則性規定（如「由委員會另訂之」、「以基本工資為原則」），請如實回答，不可回答找不到。\n"
+        "4. **問題過於模糊時先反問**：若使用者只輸入單一關鍵字或 Context 中有多個可能主題，請先用繁體中文請使用者補充想查的具體事項，不要自行選一個主題長篇回答。\n"
+        "5. **來源處理**：回答內文不要自行新增「來源：」、「參考文獻：」、「可用來源清單：」或頁碼段落；系統會在回答下方自動顯示來源標籤。若內文需要自然提及法規名稱，只能使用下方來源清單中的名稱，不可臆造來源。\n"
+        "6. **條號處理**：不要自行猜測或改寫條號；只有在 Context 明確顯示同一段內容所屬條號時，才可提及條號。若不確定，直接摘要規定內容即可。\n"
+        "7. **拒答處理**：若 Context 完全無關且找不到答案，請僅回答：「抱歉，在現有的企業知識庫中找不到與您問題相關的解答」，不准附帶其他多餘字句。\n"
+        "8. **跨語言對照翻譯**：Context 若為英文，必須以中文作答。翻譯請使用台灣大專院校慣用語：\n"
+        "   - Academic Affairs Office -> **教務處**\n"
+        "   - Student Affairs Office -> **學務處**\n"
+        "   - department chair -> **學系主任**\n"
+        "   - semester examinations -> **學期考試（期末考）**\n"
+        "   - temporary exams or midterms -> **臨時考試或期中考**\n"
+        f"{leave_rules}"
+        f"{format_rule_number}. **排版格式**：請務必使用 Markdown 格式回答。\n"
+        "   - 第一段先用 1 句話直接回答問題，不要超過 40 個中文字。\n"
+        "   - 若答案包含成員、資格、流程、期限、金額、條件或多個單位，必須使用 Markdown 條列 `- `，每個重點單獨一列；不要把「一、二、三」塞在同一段。\n"
+        "   - 每個條列盡量不超過 45 個中文字；太長時請拆成多列。\n"
+        "   - 每則回答至少標註 2 到 5 個重點。對於**允許/禁止、同意/不同意、例外情況、期限、分數、金額、資格、審核與核准單位、應辦事項、事後補件或報告**，必須使用雙星號標注。\n"
+        "   - 若答案涉及是否可以做某事，必須把結論詞標粗，例如：**不可以**、**可以**、**不得**、**必須**。\n"
+        "   - 若答案涉及獎學金、獎勵或續領，必須標粗**續領**、**學業成績平均**、**分數門檻**、**排名門檻**、**無懲處紀錄**等條件。\n"
+        "   - 若答案涉及宿舍/檢查/隱私，必須標粗**未獲同意**、**不得隨意進入**、**特殊危急狀況**、**事後書面報告**等關鍵限制。\n"
+        "   - 不要使用 Markdown 表格，表格在前端閱讀不穩定；請改用分段與條列。\n"
+        "   - 不要輸出大段連續文字；若無法條列，至少分成短段落。\n\n"
+        "可用來源清單（僅供核對，不要在回答末尾重複列出）：\n"
+        f"{source_list}\n\n"
+        "Context:\n"
+        "{context}"
+    )
+
 
 # 確保 PDF 目錄存在
 if not os.path.exists(DATA_DIR):
@@ -415,7 +560,7 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
     queries = [user_query]
     
     # 判斷是否為請假/缺席相關的問題，若是才啟用中英雙語擴展
-    is_leave_query = any(k in user_query.lower() for k in ["假", "leave", "absent", "vacation", "sick"])
+    is_leave_query = _is_leave_query(user_query)
     
     # 為了節省算力與時間，非請假問題若長度大於 30 字，則直接返回不進行擴展
     if not is_leave_query and len(user_query.strip()) > 30:
@@ -588,8 +733,74 @@ def _bm25_top_pdf_docs(bm25_pdf, pdf_texts: list, pdf_metadatas: list, tokenized
             docs.append(Document(page_content=pdf_texts[idx], metadata=pdf_metadatas[idx]))
     return docs
 
+def _doc_identity(doc: Document) -> tuple:
+    """取得文件去重 key；FAQ 優先用原文內容，PDF 用來源頁碼與內容前綴。"""
+    meta = doc.metadata or {}
+    source = os.path.basename(meta.get("source", ""))
+    page = meta.get("page", "")
+    content = meta.get("original_content") or doc.page_content or ""
+    normalized_content = " ".join(content.split())
+    return (source, page, normalized_content[:220])
+
+def _dedupe_documents_by_identity(docs: list, limit: Optional[int] = None) -> list:
+    """保留順序去除重複文件，避免同一頁/同一 FAQ 原文重複塞入 Context。"""
+    deduped = []
+    seen = set()
+    for doc in docs:
+        key = _doc_identity(doc)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(doc)
+        if limit is not None and len(deduped) >= limit:
+            break
+    return deduped
+
+def _priority_source_pdf_docs(bm25_index: dict, query: str, priority_src: str, n: int = 4) -> list:
+    """當融合排序沒抓到主題文件時，從指定 PDF 內補回候選 chunks。"""
+    if not priority_src:
+        return []
+
+    candidate_pairs = [
+        (text, metadata)
+        for text, metadata in zip(bm25_index.get("pdf_texts", []), bm25_index.get("pdf_metadatas", []))
+        if priority_src in metadata.get("source", "")
+    ]
+    if not candidate_pairs:
+        return []
+
+    candidate_texts = [text for text, _ in candidate_pairs]
+    candidate_metadatas = [metadata for _, metadata in candidate_pairs]
+    tokenized_query = list(jieba.cut(query))
+
+    if tokenized_query:
+        bm25 = BM25Okapi([list(jieba.cut(text)) for text in candidate_texts])
+        docs = _bm25_top_pdf_docs(bm25, candidate_texts, candidate_metadatas, tokenized_query, n=n)
+        if docs:
+            return docs
+
+    ordered_pairs = sorted(candidate_pairs, key=lambda pair: pair[1].get("page", 0))
+    return [
+        Document(page_content=text, metadata=metadata)
+        for text, metadata in ordered_pairs[:n]
+    ]
+
 def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_expansion: bool = False):
     """查詢 RAG 系統並以生成器方式返回 metadata 與答案字元流 (支援 RRF 融合排序、查詢擴展與 Gemini API 備援)"""
+    if _is_under_specified_query(user_query):
+        yield {
+            "type": "metadata",
+            "sources": [],
+            "detailed_sources": [],
+            "engine_type": "需要補充問題",
+            "expanded_queries": [user_query.strip()] if user_query.strip() else []
+        }
+        yield {
+            "type": "content",
+            "content": _build_clarification_message(user_query)
+        }
+        return
+
     # 1. 檢索本地向量資料庫（PDF 知識庫）
     if db is None:
         db = init_vector_db()
@@ -605,7 +816,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     if disable_expansion:
         # 【加速模式特例優化】即使開啟了加速模式，如果是需要跨語檢索的請假問題，也必須進行基本雙語擴展，否則無法檢索英文 PDF。
         # 由於地端擴充已採用零延遲旁路詞庫，此處強制保留請假問題的擴展。
-        is_leave_query = any(k in user_query.lower() for k in ["假", "leave", "absent", "vacation", "sick"])
+        is_leave_query = _is_leave_query(user_query)
         if is_leave_query:
             queries = generate_expanded_queries(user_query, api_key)
         else:
@@ -649,11 +860,17 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     # RRF 融合後可能將錯誤文件置於最終 context。此步驟在 RRF 後修正排序，確保主題對應文件優先。
     _priority_src = _detect_priority_source(user_query)
     if _priority_src:
+        if not any(_priority_src in d.metadata.get("source", "") for d in merged_pdf_docs):
+            priority_docs = _priority_source_pdf_docs(bm25_index, user_query, _priority_src, n=4)
+            if priority_docs:
+                print(f"🎯 RRF 未命中主題文件，已從 {_priority_src} 補回 {len(priority_docs)} 個 chunks。")
+                merged_pdf_docs = priority_docs + merged_pdf_docs
+
         _prio_docs = [d for d in merged_pdf_docs if _priority_src in d.metadata.get("source", "")]
         _other_docs = [d for d in merged_pdf_docs if _priority_src not in d.metadata.get("source", "")]
         merged_pdf_docs = _prio_docs + _other_docs
     
-    pdf_docs = merged_pdf_docs[:4]  # 取前 4 個最相關法規 chunk
+    pdf_docs = _dedupe_documents_by_identity(merged_pdf_docs, limit=4)  # 取前 4 個最相關法規 chunk
     
     # 取最相關的 FAQ 命中（最多 3 個，避免單一 query 的第一名被其他法規 FAQ 競爭排擠）
     faq_docs_result = []
@@ -667,13 +884,13 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
         faq_docs_result = faq_docs_result[:3]  # 最多保留 3 個 FAQ 命中，提高容錯率
     
     # 合併：FAQ 命中放前面（若有命中），再加 PDF chunks
-    docs = faq_docs_result + pdf_docs
+    docs = _dedupe_documents_by_identity(faq_docs_result + pdf_docs)
     
     # 主題感知淨化過濾器：若偵測到特定主題文件，且檢索結果中包含此文件，則精準排除無關文件，避免地端模型混淆
     if _priority_src:
         purified_docs = [d for d in docs if _priority_src in d.metadata.get("source", "")]
         if purified_docs:
-            docs = purified_docs
+            docs = _dedupe_documents_by_identity(purified_docs)
             print(f"🎯 觸發主題感知淨化過濾器，僅保留與主題 {_priority_src} 相關的 {len(docs)} 個 chunks，排除其他無關法規。")
             
     docs = docs[:7]  # 最多 7 個 context chunks（3 FAQ + 4 PDF）
@@ -739,27 +956,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     }
     
     # 6. 設計地端 RAG Prompt
-    system_prompt = (
-        "你是一位嚴謹的東吳大學學生事務知識庫助手。請根據以下提供的 Context（法規或問答內容）精準回答使用者的問題。\n"
-        "【嚴格要求】：\n"
-        "1. **完全基於事實**：僅根據 Context 內有的內容回答。不可憑空想像、推論或加入外部知識。答案必須精準，不可過度推論。若 Context 中包含原則性規定（如「由委員會另訂之」、「以基本工資為原則」），請如實回答，不可回答找不到。\n"
-        "2. **明確標註來源**：必須在回答中提及參考的資料來源（檔名與頁數，例如：學生請假規則第 3 頁）。\n"
-        "3. **拒答處理**：若 Context 完全無關且找不到答案，請僅回答：「抱歉，在現有的企業知識庫中找不到與您問題相關的解答」，不准附帶其他多餘字句。\n"
-        "4. **跨語言對照翻譯**：Context 若為英文，必須以中文作答。翻譯請使用台灣大專院校慣用語：\n"
-        "   - Academic Affairs Office -> **教務處**\n"
-        "   - Student Affairs Office -> **學務處**\n"
-        "   - department chair -> **學系主任**\n"
-        "   - semester examinations -> **學期考試（期末考）**\n"
-        "   - temporary exams or midterms -> **臨時考試或期中考**\n"
-        "5. **嚴防期限與核定單位混淆**：不同假別（如「一般請假」與「學期考試請假」）的期限與核准單位分屬不同條文，**絕對不可混用**。請根據使用者所問的具體假別，找到該假別專屬的條文與期限進行回答：\n"
-        "   - **一般請假（如事假、病假、生理假等）**：最遲應於缺課次日起**一週內**完成辦理。\n"
-        "   - **學期考試（期末考）請假**：必須在考試結束後**五個工作日內**提出申請，由學系主任簽註意見並送**教務處**核定。\n"
-        "6. **排版格式**：請務必使用 Markdown 格式回答。\n"
-        "   - 對於回答中的**關鍵人名、日期、期限、分數、金額、假別、審核與核准單位**，必須使用雙星號（例如：**五個工作日**、**80分(含)以上**、**新臺幣3萬元**、**教務處**）進行粗體標注，以便系統進行螢光標記。\n"
-        "   - 適當使用條列式與分段，使答案清晰易讀。\n\n"
-        "Context:\n"
-        "{context}"
-    )
+    system_prompt = _build_system_prompt(user_query, sources)
     
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
