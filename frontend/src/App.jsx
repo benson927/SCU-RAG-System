@@ -338,6 +338,7 @@ function App() {
   const [slideIndex, setSlideIndex] = useState(0); // 新增當前投影片索引狀態
   const [showConfig, setShowConfig] = useState(false); // 新增系統配置面板折疊狀態
   const [geminiKey, setGeminiKey] = useState(localStorage.getItem("geminiKey") || "");
+  const [rememberGeminiKey, setRememberGeminiKey] = useState(Boolean(localStorage.getItem("geminiKey")));
   const [disableExpansion, setDisableExpansion] = useState(localStorage.getItem("disableExpansion") !== "false"); // 預設為 true
   const [forceLocal, setForceLocal] = useState(localStorage.getItem("forceLocal") === "true"); // 預設為 false
   const [dbStatus, setDbStatus] = useState("empty"); // ready, outdated, empty
@@ -783,13 +784,39 @@ function App() {
                     placeholder="請輸入 API Key 以啟用加速..."
                     value={geminiKey}
                     onChange={(e) => {
-                      setGeminiKey(e.target.value);
-                      localStorage.setItem("geminiKey", e.target.value);
+                      const nextKey = e.target.value;
+                      setGeminiKey(nextKey);
+                      if (rememberGeminiKey) {
+                        localStorage.setItem("geminiKey", nextKey);
+                      }
                     }}
                   />
                 </div>
                 
                 <div className="config-toggle-group">
+                  <div className="toggle-item">
+                    <div className="toggle-label-desc">
+                      <strong>記住金鑰</strong>
+                      <span>關閉時只保留到本頁重新整理前</span>
+                    </div>
+                    <label className="switch">
+                      <input
+                        type="checkbox"
+                        checked={rememberGeminiKey}
+                        onChange={(e) => {
+                          const shouldRemember = e.target.checked;
+                          setRememberGeminiKey(shouldRemember);
+                          if (shouldRemember && geminiKey.trim()) {
+                            localStorage.setItem("geminiKey", geminiKey);
+                          } else {
+                            localStorage.removeItem("geminiKey");
+                          }
+                        }}
+                      />
+                      <span className="slider round"></span>
+                    </label>
+                  </div>
+
                   <div className="toggle-item">
                     <div className="toggle-label-desc">
                       <strong>⚡ 查詢加速模式</strong>

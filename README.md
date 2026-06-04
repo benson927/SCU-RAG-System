@@ -130,12 +130,17 @@ SCU-RAG-System/
 
 ## 🛠️ 安裝與開發環境部署
 
-### 1. 安裝 Python 後端套件依賴
+### 1. 安裝 Python 套件依賴
 
 建議使用 Python 3.10 以上版本，執行以下指令安裝所需套件：
 ```bash
 python3 -m pip install -r requirements.txt
 ```
+
+> 若只要啟動 FastAPI 後端主線，也可改安裝較精簡的後端依賴：
+> ```bash
+> python3 -m pip install -r backend/requirements.txt
+> ```
 
 ### 2. 安裝並運行地端大語言模型 (Ollama 模式)
 如果您想使用 100% 本地地端模式，請完成以下步驟：
@@ -159,7 +164,7 @@ python3 -m pip install -r requirements.txt
    ```text
    GEMINI_API_KEY=您的_GEMINI_API_金鑰
    ```
-3. 啟動系統時，網頁輸入框將自動載入該金鑰並自動開啟「API 加速模式 ⚡」。在 Demo 現場您亦可直接於網頁左側的 **「⚙️ 系統配置」** 隨時覆蓋貼上。
+3. 啟動系統時，後端會讀取 `.env` 中的金鑰；Demo 現場也可直接於網頁左側的 **「⚙️ 系統配置」** 貼上金鑰。前端預設只在當前頁面保留手動輸入的金鑰，若需要重整後自動帶入，可在配置面板開啟「記住金鑰」。
 
 ---
 
@@ -208,13 +213,27 @@ python3 scratch/run_faq_evaluation.py
 
 ### 🧪 其他測試腳本
 
-#### 1. 執行 RAG 整合測試腳本
+#### 1. 執行純邏輯單元測試
+此測試不需啟動 Ollama 或 Gemini，適合在改動檢索邏輯、提示詞與狀態 API 後快速確認：
+```bash
+python3 -m unittest discover -v
+```
+
+#### 2. 執行前端建置與 ESLint 檢查
+確認 React 介面可正常打包，且沒有 ESLint 問題：
+```bash
+cd frontend
+npm run build
+npm run lint
+```
+
+#### 3. 執行 RAG 整合測試腳本
 在終端機中模擬基礎 RAG 檢索流程（包含 Ollama 喚醒、向量庫搜尋與模型生成）：
 ```bash
 python3 test_rag.py
 ```
 
-#### 2. 執行檢索單元測試
+#### 4. 執行檢索單元測試
 測試分詞、Boosting 加權、中英跨語言語意增強是否能正常運作：
 ```bash
 python3 test_retrieval.py
