@@ -209,6 +209,7 @@ const renderMarkdown = (text) => {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+  const escapeAttribute = (value) => escapeHtml(value).replace(/"/g, "&quot;");
 
   const renderInline = (value) => escapeHtml(value)
     .replace(/`([^`]+)`/g, '<code class="manga-code">$1</code>')
@@ -218,6 +219,8 @@ const renderMarkdown = (text) => {
   let paragraphLines = [];
   let listItems = [];
   let skipInternalSourceBlock = false;
+  const normalizedText = normalizeAnswerText(text);
+  const shouldRenderSuggestedQuestions = /請把問題問得更具體一點，例如：/.test(normalizedText);
 
   const flushParagraph = () => {
     if (paragraphLines.length === 0) return;
@@ -228,13 +231,30 @@ const renderMarkdown = (text) => {
   const flushList = () => {
     if (listItems.length === 0) return;
     const items = listItems
-      .map(item => `<li class="manga-li">${renderInline(item)}</li>`)
+      .map((item) => {
+        const suggestedQuestionMatch = shouldRenderSuggestedQuestions
+          ? item.match(/^\*\*(.+?[？?])\*\*$/)
+          : null;
+
+        if (suggestedQuestionMatch) {
+          const question = suggestedQuestionMatch[1].trim();
+          return [
+            '<li class="manga-li suggested-question-item">',
+            `<button type="button" class="suggested-question-btn" data-suggested-question="${escapeAttribute(question)}">`,
+            renderInline(question),
+            '</button>',
+            '</li>',
+          ].join("");
+        }
+
+        return `<li class="manga-li">${renderInline(item)}</li>`;
+      })
       .join("");
     blocks.push(`<ul class="manga-list">${items}</ul>`);
     listItems = [];
   };
 
-  normalizeAnswerText(text).split("\n").forEach((line) => {
+  normalizedText.split("\n").forEach((line) => {
     const trimmed = line.trim();
 
     if (!trimmed) {
@@ -451,11 +471,10 @@ function App() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading || !canAskQuestion) return;
+  const askQuestion = async (rawQuery) => {
+    const userQuery = rawQuery.trim();
+    if (!userQuery || isLoading || !canAskQuestion) return;
 
-    const userQuery = input.trim();
     setInput("");
     
     ragAbortRef.current?.abort();
@@ -598,6 +617,11 @@ function App() {
     }
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await askQuestion(input);
+  };
+
   const clearChat = () => {
     ragAbortRef.current?.abort();
     ragAbortRef.current = null;
@@ -613,10 +637,21 @@ function App() {
   };
 
   const handleSampleQuestion = (question) => {
+    if (canAskQuestion && !isLoading) {
+      void askQuestion(question);
+      return;
+    }
+
     setInput(question);
     window.requestAnimationFrame(() => {
       inputRef.current?.focus();
     });
+  };
+
+  const handleMessageContentClick = (e) => {
+    const questionButton = e.target.closest("[data-suggested-question]");
+    if (!questionButton) return;
+    void askQuestion(questionButton.dataset.suggestedQuestion || "");
   };
 
   return (
@@ -929,6 +964,7 @@ function App() {
                     <div 
                       className="message-content"
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                      onClick={handleMessageContentClick}
                     />
                     
                     {/* 來源卡片 */}

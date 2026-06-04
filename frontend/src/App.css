@@ -1620,6 +1620,44 @@ input:disabled + .slider {
   font-weight: 900;
 }
 
+.manga-li.suggested-question-item {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.manga-li.suggested-question-item::before {
+  content: none;
+}
+
+.suggested-question-btn {
+  width: 100%;
+  text-align: left;
+  color: var(--ink-black);
+  background: rgba(241, 248, 255, 0.8);
+  border: 2px dashed rgba(30, 37, 43, 0.24);
+  border-radius: 8px;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  font-weight: 900;
+  line-height: 1.45;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.suggested-question-btn:hover {
+  background: var(--paper-white);
+  border-color: var(--ink-black);
+  border-style: solid;
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--ink-black);
+}
+
+.suggested-question-btn:focus-visible {
+  outline: 3px solid var(--sky-blue);
+  outline-offset: 2px;
+}
+
 /* 常規段落 */
 .manga-p {
   margin: 0 0 0.55rem 0;
