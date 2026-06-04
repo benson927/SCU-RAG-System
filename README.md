@@ -1,6 +1,6 @@
 # 🎓 SCU 法規規範智慧檢索系統 
 
-[![React](https://img.shields.io/badge/React-18.2%2B-blue?logo=react&logoColor=white)](https://react.dev/)
+[![React](https://img.shields.io/badge/React-19-blue?logo=react&logoColor=white)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Ollama](https://img.shields.io/badge/Ollama-Offline%20LLM-black)](https://ollama.com/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector%20DB-orange)](https://www.trychroma.com/)
@@ -22,7 +22,7 @@
 *   ✍️ **手繪螢光筆重點標注與 Markdown 渲染**：徹底告別裸露的 Markdown 星號。前端實作了**零套件依賴 Markdown 解析器**，自動將回答中的關鍵分數、期限、金額等標記上 **「暖黃色半透明螢光筆筆觸 + 橘黃色手繪虛線底線」** 且帶有傾斜隨性塗鴉感的視覺效果，並美化了列表項目。
 *   ⚙️ **折疊式推論引擎配置面板 (方案 A-1)**：在左側欄將「狀態徽章」與「系統設定」完美整合為折疊面板。
     *   預設收合以保持側邊欄簡潔，點選即可滑出。支援手動配置 `Gemini API Key`、`⚡ 查詢加速模式` 與 `🦉 純地端模式` 開關。
-    *   **LocalStorage 自動快取**：輸入的 Key 與開關狀態會快取在瀏覽器中，Demo 重刷免重貼。
+    *   **Demo 模式設定快取**：查詢加速與純地端模式會自動保留；Gemini API Key 預設只留在當前頁面，需要重整後保留時可手動開啟「記住金鑰」。
     *   **動態狀態綁定**：啟用加速時，徽章自動變更為 `雲端加速模式 ⚡`，生成模型亦動態由 `Gemma 3 (Ollama)` 切換為 `Gemini 2.5 Flash`。
     *   **雲端 API 加速模式回答展示**：
         <img src="images/API加速回答.PNG" alt="API加速模式回答畫面" width="80%" />
@@ -69,7 +69,7 @@ sequenceDiagram
 
 ## 📊 系統效能與本地 RAG 評估結果
 
-本專案實施了嚴格的自動化評估機制，透過獨立測試腳本 [run_faq_evaluation.py](file:///Users/bensonhong/Desktop/Antigravity專案/管哩資訊系統期末（Benson組)/scratch/run_faq_evaluation.py)，在**純地端模式（Gemma 3 + ChromaDB）**下對學校行政與請假法規進行了 **104 題隨機口語化問題**的批量自動化測試，其核心效能與指標摘要如下：
+本專案實施了嚴格的自動化評估機制，透過獨立測試腳本 [run_faq_evaluation.py](scratch/run_faq_evaluation.py)，在**純地端模式（Gemma 3 + ChromaDB）**下對學校行政與請假法規進行了 **104 題隨機口語化問題**的批量自動化測試，其核心效能與指標摘要如下：
 
 ### 📈 評估數據摘要
 *   **測試問題總數**：104 題
@@ -156,8 +156,11 @@ python3 -m pip install -r requirements.txt
 ### 3. 配置 Gemini API 金鑰 (雲端加速模式)
 如果您想使用雲端 API 加速模式，可前往 [Google AI Studio](https://aistudio.google.com/) 免費申請 Gemini API Key。
 為了在 Demo 演示時**零手動準備**，本系統支援讀取環境變數配置檔：
-1. 在專案根目錄下建立一個 `.env` 檔案。
-2. 在檔案中寫入以下配置（或直接修改已產生的 `.env` 檔案）：
+1. 在專案根目錄下複製 `.env.example` 為 `.env`：
+   ```bash
+   cp .env.example .env
+   ```
+2. 在 `.env` 中寫入以下配置：
    ```text
    GEMINI_API_KEY=您的_GEMINI_API_金鑰
    ```
@@ -184,7 +187,7 @@ cd frontend
 npm install      # 初次使用時安裝前端套件
 npm run dev      # 啟動 React + Vite 開發伺服器
 ```
-* 前端網頁將在瀏覽器中自動開啟，網址為 [http://localhost:5173](http://localhost:5173) (或 Vite 自動指派的 Port)。
+* 前端網頁可於 [http://localhost:5173](http://localhost:5173) 開啟；若 5173 已被使用，請依 Vite 終端機顯示的 Port 進入。
 
 ---
 
