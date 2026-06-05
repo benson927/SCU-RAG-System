@@ -1698,3 +1698,15 @@ input:disabled + .slider {
   border-top: 2px dashed var(--ink-black);
   margin: 0.75rem 0 0.65rem;
 }
+
+.admin-entry-btn {
+  color: var(--ink-black);
+  background: var(--paper-white);
+  border: 2.5px solid var(--ink-black);
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 var(--ink-black);
+}

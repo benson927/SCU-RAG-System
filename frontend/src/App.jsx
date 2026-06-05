@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import "./App.css";
+import AdminPanel from "./AdminPanel";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
 
@@ -341,6 +342,7 @@ const getFriendlyErrorMessage = (error) => {
 };
 
 function App() {
+  const [showAdmin, setShowAdmin] = useState(false);
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -654,6 +656,10 @@ function App() {
     void askQuestion(questionButton.dataset.suggestedQuestion || "");
   };
 
+  if (showAdmin) {
+    return <AdminPanel apiBaseUrl={API_BASE_URL} onClose={() => setShowAdmin(false)} />;
+  }
+
   return (
     <div className="app-container">
       {/* 頂部導航欄 */}
@@ -664,6 +670,9 @@ function App() {
           <span className="subtitle">校園規章知識庫</span>
         </div>
         <div className="header-right">
+          <button className="admin-entry-btn" type="button" onClick={() => setShowAdmin(true)}>
+            文件管理
+          </button>
           <div className={`status-badge ${backendStatus}`}>
             <span className="dot"></span>
             {backendStatus === "checking" && "檢測狀態中..."}
