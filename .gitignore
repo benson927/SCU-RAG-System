@@ -21,12 +21,14 @@ dist/
 
 # 環境變數與金鑰
 .env
+.env.compose
 *.local
 .env.local
 .env.*.local
 
 # 本地臨時腳本
 scratch/
+.docker-anonymous/
 
 # 原始簡報檔
 /MIS_Project_Benson.pptx
@@ -34,6 +36,7 @@ scratch/
 
 # 向量資料庫
 chroma_db/
+data/managed_documents/
 
 # 本地開發備忘錄
 local_notes.txt
