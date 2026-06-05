@@ -174,7 +174,9 @@ make compose-logs        # 追蹤 FastAPI log
 make compose-down        # 停止服務，保留 volumes
 make import-dry-run      # 預覽 legacy PDF 匯入
 make import-publish      # 匯入並發布 legacy PDF
-make integration-test   # 真實 PostgreSQL/MinIO 整合測試
+make test                # 後端 unit + 前端 lint/build
+make test-integration    # 真實 PostgreSQL/MinIO 整合測試
+make test-smoke          # 需要 Ollama 的 live RAG smoke test
 make compose-reset       # 刪除所有 Compose 開發資料
 ```
 
@@ -191,25 +193,39 @@ make compose-up COMPOSE="podman compose"
 ## 測試
 
 ```bash
-python3 -m unittest -v
-
-cd frontend
-npm run lint
-npm run build
+make test
 ```
 
-Compose integration test 會使用真實 PostgreSQL、MinIO、migration、API 與 managed directory，並以固定測試 builder 取代 Ollama embedding：
+正式測試集中於 `tests/`：
+
+- `tests/unit/`：認證、PDF 驗證、文件生命週期、legacy importer、RAG 純邏輯與 worker 原子替換。
+- `tests/integration/`：真實 PostgreSQL、MinIO、migration、管理 API 與 managed directory。
+- `scripts/smoke_rag.py`：需啟動 Ollama 的 live RAG 檢查，不計入 unit test。
+
+分開執行：
 
 ```bash
-make integration-test
+make test-unit
+make test-integration
+make test-smoke
 ```
 
-本倉庫另保留一份 2026 年建立的本地 RAG 歷史評估資料：
+`make test-integration` 會使用隔離的 Compose override，並以 manifest builder 取代 Ollama embedding。
 
-- [104 題評估報告](demo_faq_100.md)
-- [104 題原始結果](demo_faq_100.json)
+## Benchmark 與維護工具
 
-結果反映當時硬體、模型、提示詞與資料集，不代表其他環境的效能或正確率保證。
+- [2026 歷史 benchmark 摘要](docs/benchmark-2026.md)
+- `scripts/evaluate_rag.py`：重新執行 104 題本機 benchmark，輸出至 ignored 的 `artifacts/`。
+- `scripts/generate_faq_dataset.py`：以 Ollama 或 Gemini 增量更新 FAQ cache。
+- `scripts/convert_presentation.py`：由保留的簡報 PDF 重建 1920×1080 WebP 投影片。
+
+```bash
+python scripts/evaluate_rag.py --limit 10
+python scripts/generate_faq_dataset.py --provider ollama
+python scripts/convert_presentation.py
+```
+
+前端內嵌簡報使用 9 張 WebP；原始 PDF 保留於 `frontend/public/Smart_SCU_Law_Navigator＿1.pdf`。歷史 benchmark 的 raw JSON/Markdown 不再提交，避免把一次性生成輸出當成 runtime 資料。
 
 ## 雲端部署
 
@@ -220,6 +236,7 @@ make integration-test
 - `STORAGE_ENDPOINT`、`STORAGE_BUCKET`
 - `STORAGE_ACCESS_KEY`、`STORAGE_SECRET_KEY`
 - `OLLAMA_BASE_URL`
+- `OLLAMA_CHAT_MODEL`、`OLLAMA_EMBEDDING_MODEL`
 - `CORS_ALLOWED_ORIGINS`
 
 啟動前執行 migration：
@@ -242,10 +259,9 @@ STORAGE_FORCE_PATH_STYLE=true
 
 正式環境應維持 private bucket、啟用 PostgreSQL TLS，並為 Chroma 與 `data/managed_documents` 掛載持久化磁碟。此版本的 worker 設計為單一實例，請勿同時啟動多個索引 worker。
 
-## Legacy / Optional
+## Demo / Optional
 
-- 未設定 `DATABASE_URL` 時，後端仍可使用 `data/` 直接建立本機展示索引。
-- `app.py` 保留舊版 Streamlit 介面，主要開發與展示流程以 React + FastAPI 為準。
+- 未設定 `DATABASE_URL` 時，FastAPI 仍可使用 `data/` 建立本機展示索引；正式文件流程仍以 PostgreSQL 與物件儲存為準。
 - Gemini 僅為選用加速方式；`force_local: true` 可強制使用 Ollama。
 
 ## License 與資料聲明

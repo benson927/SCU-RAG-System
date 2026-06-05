@@ -35,3 +35,5 @@ python -m backend.scripts.import_legacy_data --publish
 建立本機展示索引。這是相容舊版的備用流程，不是正式文件管理方式。
 
 此目錄內容的授權與權利說明請參閱根目錄 [NOTICE.md](../NOTICE.md)。
+
+FAQ 維護工具位於 `scripts/generate_faq_dataset.py`，採 checksum 增量更新並以暫存檔原子替換輸出。

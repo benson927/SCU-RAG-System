@@ -34,6 +34,12 @@ class Settings:
     ollama_base_url: str = field(
         default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
     )
+    ollama_chat_model: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_CHAT_MODEL", "gemma3")
+    )
+    ollama_embedding_model: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+    )
     index_build_mode: str = field(
         default_factory=lambda: os.getenv("INDEX_BUILD_MODE", "chroma").strip().lower()
     )

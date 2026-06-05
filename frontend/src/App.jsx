@@ -1055,7 +1055,7 @@ function App() {
             <div className="pdf-modal-body">
               <div className="slide-container">
                 <img 
-                  src={`/slides/slide_${slideIndex + 1}.png`} 
+                  src={`/slides/slide_${slideIndex + 1}.webp`}
                   alt={`Slide ${slideIndex + 1}`}
                   className="slide-image"
                 />

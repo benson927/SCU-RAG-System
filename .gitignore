@@ -18,6 +18,7 @@ frontend/node_modules/
 frontend/dist/
 node_modules/
 dist/
+artifacts/
 
 # 環境變數與金鑰
 .env

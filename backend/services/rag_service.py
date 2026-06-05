@@ -445,7 +445,7 @@ def get_embeddings():
         # 初始化地端嵌入模型
         # 使用 Ollama 的 nomic-embed-text，此模型專為文本嵌入設計，適合地端高效執行。
         _embeddings = OllamaEmbeddings(
-            model="nomic-embed-text",
+            model=get_settings().ollama_embedding_model,
             base_url=get_settings().ollama_base_url,
         )
     return _embeddings
@@ -459,7 +459,7 @@ def get_llm():
             _ollama_checked = True
         # 初始化地端 LLM 引擎 (使用 gemma3)
         _llm = ChatOllama(
-            model="gemma3",
+            model=get_settings().ollama_chat_model,
             base_url=get_settings().ollama_base_url,
             temperature=0.0  # 設為 0 以獲得最穩定、不隨機且不產生幻覺的回答
         )
