@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+frontend/node_modules
+frontend/dist
+frontend
+images
+static
+node_modules
+chroma_db
+data/managed_documents
+data/*.pdf
+__pycache__
+*.pyc
+.DS_Store

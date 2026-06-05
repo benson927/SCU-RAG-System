@@ -5,11 +5,14 @@ import subprocess
 import urllib.request
 import time
 import heapq
+import threading
 from typing import Optional
+
+from backend.config import get_settings
 
 def ensure_ollama_running():
     """檢查本地 Ollama 服務是否啟動，若未啟動則嘗試在 macOS 上自動開啟它"""
-    ollama_url = "http://localhost:11434"
+    ollama_url = get_settings().ollama_base_url
     try:
         # 嘗試在 1 秒內檢測 Ollama 服務是否正常
         with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
@@ -46,7 +49,10 @@ from langchain_core.prompts import ChatPromptTemplate
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(_CURRENT_DIR))
 DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
+MANAGED_DATA_DIR = os.path.join(DATA_DIR, "managed_documents")
+MANAGED_MANIFEST_PATH = os.path.join(MANAGED_DATA_DIR, "manifest.json")
 CHROMA_DIR = os.path.join(_PROJECT_ROOT, "chroma_db")
+_vector_db_lock = threading.RLock()
 
 # 主題關鍵字 → 優先來源文件映射表（用於 RRF 後的主題感知重排序）
 # 解決問題：BM25 對英文 PDF（如請假規則）無法匹配中文問句，卻因「辦理」等通用詞
@@ -264,19 +270,77 @@ _faq_count_cache = {
 }
 _filter_support_cache = {}
 
+def _get_pdf_data_dir() -> str:
+    return MANAGED_DATA_DIR if get_settings().database_enabled else DATA_DIR
+
+
 def _get_pdf_files() -> list:
-    return sorted([f for f in os.listdir(DATA_DIR) if f.endswith(".pdf")]) if os.path.exists(DATA_DIR) else []
+    pdf_dir = _get_pdf_data_dir()
+    return sorted([f for f in os.listdir(pdf_dir) if f.endswith(".pdf")]) if os.path.exists(pdf_dir) else []
 
 def _get_faq_signature() -> Optional[dict]:
     faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
     if not os.path.exists(faq_cache_path):
         return None
     stat = os.stat(faq_cache_path)
-    return {
+    signature = {
         "file": "faq_cache.json",
         "mtime_ns": stat.st_mtime_ns,
         "size": stat.st_size,
     }
+    if get_settings().database_enabled:
+        if not os.path.exists(MANAGED_MANIFEST_PATH):
+            signature["manifest"] = None
+        else:
+            manifest_stat = os.stat(MANAGED_MANIFEST_PATH)
+            signature["manifest"] = {
+                "mtime_ns": manifest_stat.st_mtime_ns,
+                "size": manifest_stat.st_size,
+            }
+    return signature
+
+
+def _load_managed_manifest() -> dict:
+    if not get_settings().database_enabled or not os.path.exists(MANAGED_MANIFEST_PATH):
+        return {"version": 1, "documents": []}
+    try:
+        with open(MANAGED_MANIFEST_PATH, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if isinstance(data.get("documents"), list):
+            return data
+    except Exception:
+        pass
+    return {"version": 1, "documents": []}
+
+
+def _get_active_source_map() -> dict:
+    return {
+        item.get("source_alias"): item
+        for item in _load_managed_manifest().get("documents", [])
+        if item.get("source_alias") and item.get("filename")
+    }
+
+
+def _iter_active_faq_entries() -> list:
+    faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
+    if not os.path.exists(faq_cache_path):
+        return []
+    with open(faq_cache_path, "r", encoding="utf-8") as handle:
+        faq_cache = json.load(handle)
+
+    active_source_map = _get_active_source_map()
+    entries = []
+    for entry in faq_cache.values():
+        source_alias = entry.get("source", "")
+        if get_settings().database_enabled:
+            manifest_entry = active_source_map.get(source_alias)
+            if manifest_entry is None:
+                continue
+            managed_filename = manifest_entry["filename"]
+        else:
+            managed_filename = source_alias
+        entries.append((entry, managed_filename, source_alias))
+    return entries
 
 def _build_db_meta(pdf_files: list) -> dict:
     return {
@@ -321,23 +385,30 @@ def _clean_pdf_text(text: str) -> str:
 def _get_title_mapping() -> dict:
     """讀取並快取檔名到法規標題的對照表。"""
     global _title_mapping_cache
-    mapping_path = os.path.join(os.path.dirname(__file__), 'title_mapping.json')
-    if not os.path.exists(mapping_path):
-        _title_mapping_cache = {"mtime_ns": None, "mapping": {}}
-        return {}
-
-    mtime_ns = os.stat(mapping_path).st_mtime_ns
-    if _title_mapping_cache["mtime_ns"] == mtime_ns:
+    mapping_paths = [
+        os.path.join(os.path.dirname(__file__), "title_mapping.json"),
+        os.path.join(MANAGED_DATA_DIR, "title_mapping.json"),
+    ]
+    signature = tuple(
+        (path, os.stat(path).st_mtime_ns)
+        for path in mapping_paths
+        if os.path.exists(path)
+    )
+    if _title_mapping_cache["mtime_ns"] == signature:
         return _title_mapping_cache["mapping"]
 
-    try:
-        with open(mapping_path, 'r', encoding='utf-8') as f:
-            mapping = json.load(f)
-    except Exception:
-        mapping = {}
+    mapping = {}
+    for mapping_path in mapping_paths:
+        if not os.path.exists(mapping_path):
+            continue
+        try:
+            with open(mapping_path, "r", encoding="utf-8") as f:
+                mapping.update(json.load(f))
+        except Exception:
+            continue
 
     _title_mapping_cache = {
-        "mtime_ns": mtime_ns,
+        "mtime_ns": signature,
         "mapping": mapping,
     }
     return mapping
@@ -353,9 +424,7 @@ def _get_faq_count() -> int:
     faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
     if signature is not None:
         try:
-            with open(faq_cache_path, 'r', encoding='utf-8') as f:
-                faq_cache = json.load(f)
-            for entry in faq_cache.values():
+            for entry, _, _ in _iter_active_faq_entries():
                 faq_count += len([q for q in entry.get("faqs", []) if q.strip()])
         except Exception:
             faq_count = 0
@@ -377,7 +446,7 @@ def get_embeddings():
         # 使用 Ollama 的 nomic-embed-text，此模型專為文本嵌入設計，適合地端高效執行。
         _embeddings = OllamaEmbeddings(
             model="nomic-embed-text",
-            base_url="http://localhost:11434"
+            base_url=get_settings().ollama_base_url,
         )
     return _embeddings
 
@@ -391,26 +460,36 @@ def get_llm():
         # 初始化地端 LLM 引擎 (使用 gemma3)
         _llm = ChatOllama(
             model="gemma3",
-            base_url="http://localhost:11434",
+            base_url=get_settings().ollama_base_url,
             temperature=0.0  # 設為 0 以獲得最穩定、不隨機且不產生幻覺的回答
         )
     return _llm
 
-def init_vector_db(force_rebuild: bool = False):
+def init_vector_db(force_rebuild: bool = False, persist_directory: str | None = None):
     """初始化並建立向量資料庫，並在 PDF 檔案有變動時自動重建"""
+    with _vector_db_lock:
+        return _init_vector_db_locked(force_rebuild, persist_directory)
+
+
+def _init_vector_db_locked(
+    force_rebuild: bool = False,
+    persist_directory: str | None = None,
+):
     global _db
+    chroma_dir = persist_directory or CHROMA_DIR
 
     # 檢查是否有 PDF 檔案
     pdf_files = _get_pdf_files()
+    pdf_dir = _get_pdf_data_dir()
     
     # 記錄已加載的 PDF 列表的 meta 檔路徑
-    meta_path = os.path.join(CHROMA_DIR, "db_meta.json")
+    meta_path = os.path.join(chroma_dir, "db_meta.json")
     
     need_rebuild = force_rebuild
     
     # 檢查資料庫是否存在
     if not need_rebuild:
-        if not os.path.exists(CHROMA_DIR) or len(os.listdir(CHROMA_DIR)) == 0:
+        if not os.path.exists(chroma_dir) or len(os.listdir(chroma_dir)) == 0:
             need_rebuild = True
         else:
             # 檢查 meta 檔
@@ -429,27 +508,45 @@ def init_vector_db(force_rebuild: bool = False):
     if _db is not None and not need_rebuild:
         return _db
                 
+    if need_rebuild and not pdf_files:
+        import shutil
+        _clear_runtime_caches(clear_db=True)
+        if os.path.exists(chroma_dir):
+            shutil.rmtree(chroma_dir)
+        return None
+
     # 如果需要重建且有 PDF 檔案，先刪除舊庫並重建
     if need_rebuild and pdf_files:
         print("🔄 偵測到 PDF 或 FAQ 檔案變動，正在重建向量資料庫...")
         import shutil
         _clear_runtime_caches(clear_db=True)
-        if os.path.exists(CHROMA_DIR):
+        if os.path.exists(chroma_dir):
             try:
-                shutil.rmtree(CHROMA_DIR)
+                shutil.rmtree(chroma_dir)
             except Exception as e:
                 print(f"⚠️ 刪除舊向量庫失敗: {e}，將嘗試直接覆蓋。")
             
         from langchain_community.document_loaders import PyPDFDirectoryLoader
         from langchain_text_splitters import RecursiveCharacterTextSplitter
         
-        loader = PyPDFDirectoryLoader(DATA_DIR)
+        loader = PyPDFDirectoryLoader(pdf_dir)
         documents = loader.load()
+        manifest_by_filename = {
+            item.get("filename"): item
+            for item in _load_managed_manifest().get("documents", [])
+            if item.get("filename")
+        }
         
         # 終極 PDF 編碼與 Ligature 合字清洗器，還原被破壞的英文單字，使地端 LLM 能正確閱讀理解
         for doc in documents:
             if doc.page_content:
                 doc.page_content = _clean_pdf_text(doc.page_content)
+            source_filename = os.path.basename(doc.metadata.get("source", ""))
+            manifest_entry = manifest_by_filename.get(source_filename)
+            if manifest_entry:
+                doc.metadata["source_alias"] = manifest_entry.get("source_alias", "")
+                doc.metadata["document_id"] = manifest_entry.get("document_id", "")
+                doc.metadata["version_id"] = manifest_entry.get("version_id", "")
         
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
@@ -463,9 +560,7 @@ def init_vector_db(force_rebuild: bool = False):
         faq_docs = []
         if os.path.exists(faq_cache_path):
             try:
-                with open(faq_cache_path, 'r', encoding='utf-8') as f:
-                    faq_cache = json.load(f)
-                for entry in faq_cache.values():
+                for entry, managed_filename, source_alias in _iter_active_faq_entries():
                     source_name = entry.get("source", "未知來源")
                     page = entry.get("page", 1)
                     original_content = entry.get("content", "")
@@ -478,7 +573,8 @@ def init_vector_db(force_rebuild: bool = False):
                             faq_docs.append(Document(
                                 page_content=faq_q.strip(),
                                 metadata={
-                                    "source": os.path.join(DATA_DIR, source_name),
+                                    "source": os.path.join(pdf_dir, managed_filename),
+                                    "source_alias": source_alias or source_name,
                                     "page": page - 1,  # LangChain page 索引從 0 開始
                                     "faq_question": faq_q.strip(),
                                     "original_content": original_content,
@@ -493,11 +589,11 @@ def init_vector_db(force_rebuild: bool = False):
         db = Chroma.from_documents(
             documents=all_docs,
             embedding=get_embeddings(),
-            persist_directory=CHROMA_DIR
+            persist_directory=chroma_dir
         )
         
         # 建立 meta 檔以記錄載入的檔案
-        os.makedirs(CHROMA_DIR, exist_ok=True)
+        os.makedirs(chroma_dir, exist_ok=True)
         try:
             with open(meta_path, 'w', encoding='utf-8') as f:
                 json.dump(_build_db_meta(pdf_files), f, ensure_ascii=False, indent=4)
@@ -508,8 +604,8 @@ def init_vector_db(force_rebuild: bool = False):
         return db
     
     # 如果不需要重建且資料庫存在，直接載入
-    if os.path.exists(CHROMA_DIR) and len(os.listdir(CHROMA_DIR)) > 0:
-        _db = Chroma(persist_directory=CHROMA_DIR, embedding_function=get_embeddings())
+    if os.path.exists(chroma_dir) and len(os.listdir(chroma_dir)) > 0:
+        _db = Chroma(persist_directory=chroma_dir, embedding_function=get_embeddings())
         return _db
     
     return None
@@ -742,6 +838,14 @@ def _doc_identity(doc: Document) -> tuple:
     normalized_content = " ".join(content.split())
     return (source, page, normalized_content[:220])
 
+
+def _doc_matches_source(doc: Document, source_alias: str) -> bool:
+    metadata = doc.metadata or {}
+    return (
+        source_alias == metadata.get("source_alias")
+        or source_alias in metadata.get("source", "")
+    )
+
 def _dedupe_documents_by_identity(docs: list, limit: Optional[int] = None) -> list:
     """保留順序去除重複文件，避免同一頁/同一 FAQ 原文重複塞入 Context。"""
     deduped = []
@@ -764,7 +868,7 @@ def _priority_source_pdf_docs(bm25_index: dict, query: str, priority_src: str, n
     candidate_pairs = [
         (text, metadata)
         for text, metadata in zip(bm25_index.get("pdf_texts", []), bm25_index.get("pdf_metadatas", []))
-        if priority_src in metadata.get("source", "")
+        if priority_src == metadata.get("source_alias") or priority_src in metadata.get("source", "")
     ]
     if not candidate_pairs:
         return []
@@ -860,14 +964,14 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     # RRF 融合後可能將錯誤文件置於最終 context。此步驟在 RRF 後修正排序，確保主題對應文件優先。
     _priority_src = _detect_priority_source(user_query)
     if _priority_src:
-        if not any(_priority_src in d.metadata.get("source", "") for d in merged_pdf_docs):
+        if not any(_doc_matches_source(d, _priority_src) for d in merged_pdf_docs):
             priority_docs = _priority_source_pdf_docs(bm25_index, user_query, _priority_src, n=4)
             if priority_docs:
                 print(f"🎯 RRF 未命中主題文件，已從 {_priority_src} 補回 {len(priority_docs)} 個 chunks。")
                 merged_pdf_docs = priority_docs + merged_pdf_docs
 
-        _prio_docs = [d for d in merged_pdf_docs if _priority_src in d.metadata.get("source", "")]
-        _other_docs = [d for d in merged_pdf_docs if _priority_src not in d.metadata.get("source", "")]
+        _prio_docs = [d for d in merged_pdf_docs if _doc_matches_source(d, _priority_src)]
+        _other_docs = [d for d in merged_pdf_docs if not _doc_matches_source(d, _priority_src)]
         merged_pdf_docs = _prio_docs + _other_docs
     
     pdf_docs = _dedupe_documents_by_identity(merged_pdf_docs, limit=4)  # 取前 4 個最相關法規 chunk
@@ -888,7 +992,7 @@ def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_ex
     
     # 主題感知淨化過濾器：若偵測到特定主題文件，且檢索結果中包含此文件，則精準排除無關文件，避免地端模型混淆
     if _priority_src:
-        purified_docs = [d for d in docs if _priority_src in d.metadata.get("source", "")]
+        purified_docs = [d for d in docs if _doc_matches_source(d, _priority_src)]
         if purified_docs:
             docs = _dedupe_documents_by_identity(purified_docs)
             print(f"🎯 觸發主題感知淨化過濾器，僅保留與主題 {_priority_src} 相關的 {len(docs)} 個 chunks，排除其他無關法規。")
@@ -1090,7 +1194,7 @@ def get_full_system_status() -> dict:
     # 4. 偵測 Ollama 在線狀態 (不嘗試自動開啟，僅快速探測)
     ollama_status = "offline"
     try:
-        with urllib.request.urlopen("http://localhost:11434", timeout=0.5) as response:
+        with urllib.request.urlopen(get_settings().ollama_base_url, timeout=0.5) as response:
             if response.status == 200:
                 ollama_status = "online"
     except Exception:
@@ -1101,8 +1205,41 @@ def get_full_system_status() -> dict:
         "pdf_count": len(raw_files),
         "faq_count": faq_count,
         "ollama_status": ollama_status,
-        "loaded_files": loaded_files
+        "loaded_files": loaded_files,
+        "document_management_mode": "postgresql" if get_settings().database_enabled else "legacy",
     }
+
+    try:
+        from backend.database import check_database_health, get_migration_revision, session_scope
+        from backend.services.document_service import get_latest_index_job
+        from backend.services.index_worker import get_worker_status
+        from backend.storage import check_storage_health
+
+        status["postgresql"] = check_database_health()
+        status["migration_revision"] = get_migration_revision()
+        status["storage"] = check_storage_health()
+        status["index_worker"] = get_worker_status()
+        status["latest_index_job"] = None
+        if get_settings().database_enabled and status["postgresql"].get("status") == "online":
+            with session_scope() as session:
+                job = get_latest_index_job(session)
+                if job is not None:
+                    status["latest_index_job"] = {
+                        "id": job.id,
+                        "trigger": job.trigger,
+                        "status": job.status,
+                        "error_message": job.error_message,
+                        "created_at": job.created_at.isoformat() if job.created_at else None,
+                        "started_at": job.started_at.isoformat() if job.started_at else None,
+                        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
+                    }
+    except Exception as exc:
+        status["postgresql"] = {"status": "offline", "error": str(exc)}
+        status["migration_revision"] = None
+        status["storage"] = {"status": "unknown"}
+        status["index_worker"] = {"enabled": False, "running": False, "name": None}
+        status["latest_index_job"] = None
+
     _status_cache = dict(status)
     _status_cache_at = now
     return status

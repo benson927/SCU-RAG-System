@@ -5,6 +5,7 @@ import requests
 # 確保 python 能定位到同目錄的 backend 模組
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 from backend.services.rag_service import ensure_ollama_running, query_rag
+from backend.config import get_settings
 
 def test_rag_pdf_retrieval():
     print("=== 測試: 地端 PDF 知識庫 RAG 檢索與 LLM 推論 ===")
@@ -13,7 +14,7 @@ def test_rag_pdf_retrieval():
     ensure_ollama_running()
     
     # 檢查 Ollama 是否在運作
-    ollama_url = "http://localhost:11434"
+    ollama_url = get_settings().ollama_base_url
     try:
         response = requests.get(ollama_url, timeout=3)
         ollama_running = (response.status_code == 200)
@@ -21,7 +22,7 @@ def test_rag_pdf_retrieval():
         ollama_running = False
         
     if not ollama_running:
-        print("⚠️ 偵測到地端 Ollama (http://localhost:11434) 未啟動，無法進行實際推論測試。")
+        print(f"⚠️ 偵測到地端 Ollama ({ollama_url}) 未啟動，無法進行實際推論測試。")
         print("（請確保已執行 'ollama run gemma3' 且已下載 'nomic-embed-text' 嵌入模型）")
         return
         

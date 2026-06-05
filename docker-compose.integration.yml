@@ -1,0 +1,4 @@
+services:
+  backend:
+    environment:
+      INDEX_BUILD_MODE: manifest-only

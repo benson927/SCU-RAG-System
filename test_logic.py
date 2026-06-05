@@ -1,6 +1,9 @@
 import unittest
 import sys
 import os
+import json
+import tempfile
+from unittest.mock import patch
 
 # 確保後端目錄在 Python Path 中以利載入 backend 模組
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +19,7 @@ from backend.services.rag_service import (
     _dedupe_queries,
     _detect_priority_source,
     _is_under_specified_query,
+    _iter_active_faq_entries,
     _priority_source_pdf_docs,
     _retrieve_dense_candidates,
     _similarity_search_with_optional_filter,
@@ -271,6 +275,43 @@ class TestRAGPureLogic(unittest.TestCase):
         self.assertIsInstance(status["faq_count"], int)
         self.assertIn(status["ollama_status"], ["online", "offline"])
         self.assertIsInstance(status["loaded_files"], list)
+
+    def test_managed_mode_filters_faqs_by_active_manifest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = os.path.join(temp_dir, "data")
+            managed_dir = os.path.join(data_dir, "managed_documents")
+            os.makedirs(managed_dir)
+            with open(os.path.join(data_dir, "faq_cache.json"), "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "active": {"source": "active.pdf", "page": 1, "content": "active", "faqs": ["A"]},
+                        "archived": {"source": "archived.pdf", "page": 1, "content": "archived", "faqs": ["B"]},
+                    },
+                    handle,
+                )
+            manifest_path = os.path.join(managed_dir, "manifest.json")
+            with open(manifest_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "version": 1,
+                        "documents": [
+                            {
+                                "filename": "managed-active.pdf",
+                                "source_alias": "active.pdf",
+                            }
+                        ],
+                    },
+                    handle,
+                )
+
+            with patch.dict(os.environ, {"DATABASE_URL": "sqlite://"}, clear=False), patch.object(
+                rag_service, "DATA_DIR", data_dir
+            ), patch.object(rag_service, "MANAGED_MANIFEST_PATH", manifest_path):
+                entries = _iter_active_faq_entries()
+
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0][0]["source"], "active.pdf")
+            self.assertEqual(entries[0][1], "managed-active.pdf")
 
 if __name__ == "__main__":
     unittest.main()
