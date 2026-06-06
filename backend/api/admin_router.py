@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from backend.auth import create_admin_token, require_admin, verify_admin_password
 from backend.config import get_settings
 from backend.database import get_session
+from backend.security import enforce_admin_login_rate_limit
 from backend.services.document_service import (
     add_document_version,
     archive_version,
@@ -81,7 +82,7 @@ def serialize_document(document):
     }
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(enforce_admin_login_rate_limit)])
 def login(request: AdminLoginRequest):
     if not verify_admin_password(request.password):
         raise HTTPException(status_code=401, detail="管理密碼錯誤")

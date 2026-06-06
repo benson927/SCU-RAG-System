@@ -27,9 +27,10 @@ test-unit:
 	python3 -m unittest discover -s tests/unit -v
 
 test-integration:
-	$(INTEGRATION_PORTS) $(COMPOSE) -p $(INTEGRATION_PROJECT) --env-file .env.compose -f docker-compose.yml -f docker-compose.integration.yml up --build -d
+	@set -eu; \
+	trap '$(INTEGRATION_PORTS) $(COMPOSE) -p $(INTEGRATION_PROJECT) --env-file .env.compose -f docker-compose.yml -f docker-compose.integration.yml down --volumes --remove-orphans' EXIT; \
+	$(INTEGRATION_PORTS) $(COMPOSE) -p $(INTEGRATION_PROJECT) --env-file .env.compose -f docker-compose.yml -f docker-compose.integration.yml up --build -d; \
 	$(INTEGRATION_PORTS) $(COMPOSE) -p $(INTEGRATION_PROJECT) --env-file .env.compose -f docker-compose.yml -f docker-compose.integration.yml exec -e RUN_COMPOSE_INTEGRATION=1 backend python -m unittest -v tests.integration.test_compose
-	$(INTEGRATION_PORTS) $(COMPOSE) -p $(INTEGRATION_PROJECT) --env-file .env.compose -f docker-compose.yml -f docker-compose.integration.yml down --volumes --remove-orphans
 
 integration-test: test-integration
 

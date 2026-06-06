@@ -84,7 +84,7 @@ class TestComposeIntegration(unittest.TestCase):
     def test_postgres_minio_and_document_publish_flow(self):
         with self.db.cursor() as cursor:
             cursor.execute("SELECT version_num FROM alembic_version")
-            self.assertEqual(cursor.fetchone()[0], "20260605_0002")
+            self.assertEqual(cursor.fetchone()[0], "20260606_0003")
 
         self.s3.head_bucket(Bucket=self.bucket)
         unique = uuid.uuid4().hex[:10]
@@ -164,9 +164,22 @@ class TestComposeIntegration(unittest.TestCase):
         statuses = {item["version_number"]: item["status"] for item in current["versions"]}
         self.assertEqual(statuses, {"1.0": "published", "2.0": "archived"})
 
-        status = self.httpx.get(f"{self.api_url}/api/status", timeout=10)
+        status = self.httpx.get(
+            f"{self.api_url}/api/status",
+            headers={"X-Request-ID": "integration-status-check"},
+            timeout=10,
+        )
         status.raise_for_status()
+        self.assertEqual(status.headers["X-Request-ID"], "integration-status-check")
         payload = status.json()
         self.assertEqual(payload["postgresql"]["status"], "online")
         self.assertTrue(payload["storage"]["bucket_ready"])
-        self.assertEqual(payload["migration_revision"], "20260605_0002")
+        self.assertEqual(payload["migration_revision"], "20260606_0003")
+
+        readiness = self.httpx.get(f"{self.api_url}/health/ready", timeout=10)
+        readiness.raise_for_status()
+        self.assertEqual(readiness.json()["status"], "ready")
+
+        liveness = self.httpx.get(f"{self.api_url}/health/live", timeout=10)
+        liveness.raise_for_status()
+        self.assertEqual(liveness.json()["status"], "ok")

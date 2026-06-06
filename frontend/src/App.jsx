@@ -359,8 +359,8 @@ function App() {
   const [showPDFModal, setShowPDFModal] = useState(false); // 新增 PDF 彈窗狀態控制
   const [slideIndex, setSlideIndex] = useState(0); // 新增當前投影片索引狀態
   const [showConfig, setShowConfig] = useState(false); // 新增系統配置面板折疊狀態
-  const [geminiKey, setGeminiKey] = useState(localStorage.getItem("geminiKey") || "");
-  const [rememberGeminiKey, setRememberGeminiKey] = useState(Boolean(localStorage.getItem("geminiKey")));
+  const [geminiKey, setGeminiKey] = useState(sessionStorage.getItem("geminiKey") || "");
+  const [rememberGeminiKey, setRememberGeminiKey] = useState(Boolean(sessionStorage.getItem("geminiKey")));
   const [disableExpansion, setDisableExpansion] = useState(localStorage.getItem("disableExpansion") !== "false"); // 預設為 true
   const [forceLocal, setForceLocal] = useState(localStorage.getItem("forceLocal") === "true"); // 預設為 false
   const [dbStatus, setDbStatus] = useState("empty"); // ready, outdated, empty
@@ -384,7 +384,7 @@ function App() {
   })();
   const inputPlaceholder = (() => {
     if (backendStatus !== "online") return "請先啟動本地 FastAPI 後端服務以啟用輸入...";
-    if (dbStatus === "empty") return "知識庫尚未載入，請先將 PDF 放入 data/ 資料夾...";
+    if (dbStatus === "empty") return "知識庫尚未載入，請至文件管理後台上傳並發布 PDF...";
     if (dbStatus === "outdated") return "偵測到法規變更，首次提問會先更新知識庫...";
     return "請輸入關於法規或文檔的問題... (例如：宿舍退宿的退費標準是什麼？)";
   })();
@@ -694,27 +694,27 @@ function App() {
           {/* 系統運行說明 */}
           <div className="sidebar-card">
             <h3>⚙️ 系統運行說明</h3>
-            <p>本 RAG 系統完全在您的**本機端**執行，保護企業資料隱私不外洩。</p>
+            <p>文件由管理後台控管版本，僅已發布內容會進入檢索索引；推論可使用本機 Ollama 或選配 Gemini。</p>
             <div className="step-list">
               <div className="step-item">
                 <span className="step-num">1</span>
                 <div>
-                  <strong>置放文件</strong>
-                  <span>將 PDF 放置於 <code>data/</code> 資料夾</span>
+                  <strong>上傳草稿</strong>
+                  <span>從文件管理後台新增法規 PDF 與版本資料</span>
                 </div>
               </div>
               <div className="step-item">
                 <span className="step-num">2</span>
                 <div>
-                  <strong>執行 Ollama</strong>
-                  <span>確認已 Pull <code>gemma3</code> 與 <code>nomic-embed-text</code></span>
+                  <strong>發布與索引</strong>
+                  <span>發布版本後，由背景 worker 同步並重建 Chroma</span>
                 </div>
               </div>
               <div className="step-item">
                 <span className="step-num">3</span>
                 <div>
-                  <strong>後端啟動</strong>
-                  <span>於 <code>backend/</code> 運行 FastAPI</span>
+                  <strong>開始查詢</strong>
+                  <span>確認 FastAPI 與 Ollama 已啟動，即可依來源問答</span>
                 </div>
               </div>
             </div>
@@ -831,7 +831,7 @@ function App() {
                       const nextKey = e.target.value;
                       setGeminiKey(nextKey);
                       if (rememberGeminiKey) {
-                        localStorage.setItem("geminiKey", nextKey);
+                        sessionStorage.setItem("geminiKey", nextKey);
                       }
                     }}
                   />
@@ -840,8 +840,8 @@ function App() {
                 <div className="config-toggle-group">
                   <div className="toggle-item">
                     <div className="toggle-label-desc">
-                      <strong>記住金鑰</strong>
-                      <span>關閉時只保留到本頁重新整理前</span>
+                      <strong>此分頁記住金鑰</strong>
+                      <span>關閉分頁後自動清除，不會永久保存</span>
                     </div>
                     <label className="switch">
                       <input
@@ -851,9 +851,9 @@ function App() {
                           const shouldRemember = e.target.checked;
                           setRememberGeminiKey(shouldRemember);
                           if (shouldRemember && geminiKey.trim()) {
-                            localStorage.setItem("geminiKey", geminiKey);
+                            sessionStorage.setItem("geminiKey", geminiKey);
                           } else {
-                            localStorage.removeItem("geminiKey");
+                            sessionStorage.removeItem("geminiKey");
                           }
                         }}
                       />
@@ -916,7 +916,7 @@ function App() {
           {/* 嚴謹度提示 */}
           <div className="sidebar-card info-card">
             <h3>⚠️ 嚴謹度提示</h3>
-            <p>AI 回答時，將**僅依據**您所提供的 PDF 上下文。若無相關資訊，系統會主動回報查無解答，避免模型產生胡言亂語的「幻覺」。</p>
+            <p>系統會優先依據已發布 PDF 與引用來源回答；若檢索資訊不足，會提示無法確認，以降低模型產生不可靠內容的風險。</p>
           </div>
 
           {/* 側邊欄行動按鈕組 */}
@@ -936,10 +936,10 @@ function App() {
             {messages.length <= 1 && !isLoading ? (
               <div className="welcome-banner">
                 <div className="welcome-content">
-                  <span className="welcome-badge">✨ 100% 本地安全檢索 + 拒絕 AI 幻覺</span>
+                  <span className="welcome-badge">✨ 本地優先檢索 + 回答來源可追溯</span>
                   <h2>東吳規章 <span className="highlight-text">智慧導航員</span> ✏️</h2>
                   <p className="welcome-desc">
-                    我們重新定義了校園法規的檢索體驗。透過<strong>無網本地運作</strong>捍衛隱私，以及<strong>條文原文秒級對照</strong>阻絕幻覺。在這裡，規章不再是冷冰冰的條文，而是有憑有據的即時智慧。
+                    透過<strong>本地 Ollama 推論</strong>與<strong>條文來源對照</strong>，提供更容易查證的校園法規問答。模型回答仍可能有誤，重要事項請以法規原文與校方公告為準。
                   </p>
                   <div className="welcome-tips">
                     💡 試試提問這些東吳規章問題：

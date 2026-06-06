@@ -447,6 +447,7 @@ def get_embeddings():
         _embeddings = OllamaEmbeddings(
             model=get_settings().ollama_embedding_model,
             base_url=get_settings().ollama_base_url,
+            client_kwargs={"timeout": get_settings().ollama_request_timeout_seconds},
         )
     return _embeddings
 
@@ -461,7 +462,8 @@ def get_llm():
         _llm = ChatOllama(
             model=get_settings().ollama_chat_model,
             base_url=get_settings().ollama_base_url,
-            temperature=0.0  # 設為 0 以獲得最穩定、不隨機且不產生幻覺的回答
+            client_kwargs={"timeout": get_settings().ollama_request_timeout_seconds},
+            temperature=0.0  # 降低輸出隨機性，回答仍須以引用來源人工確認。
         )
     return _llm
 

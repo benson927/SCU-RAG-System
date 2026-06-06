@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import os
 import re
 import uuid
@@ -16,6 +17,7 @@ from backend.storage import get_storage
 
 PDF_HEADER = b"%PDF-"
 ALLOWED_VERSION_RE = re.compile(r"^[\w.\-() ]{1,80}$", re.UNICODE)
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -162,8 +164,11 @@ def _attach_version(
 def _delete_uploaded_object(object_key: str) -> None:
     try:
         get_storage().delete_file(object_key)
-    except Exception as exc:
-        print(f"⚠️ 無法清理孤兒物件 {object_key}: {exc}")
+    except Exception:
+        logger.exception(
+            "Unable to clean up orphaned object",
+            extra={"object_key": object_key},
+        )
 
 
 def _commit_or_conflict(session: Session, cleanup_object_key: str | None = None) -> None:

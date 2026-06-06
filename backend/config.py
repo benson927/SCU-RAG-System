@@ -20,6 +20,27 @@ class Settings:
     max_pdf_size_bytes: int = field(
         default_factory=lambda: int(os.getenv("MAX_PDF_SIZE_BYTES", str(20 * 1024 * 1024)))
     )
+    max_query_length: int = field(
+        default_factory=lambda: int(os.getenv("MAX_QUERY_LENGTH", "1000"))
+    )
+    rag_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("RAG_TIMEOUT_SECONDS", "120"))
+    )
+    rag_max_concurrency: int = field(
+        default_factory=lambda: int(os.getenv("RAG_MAX_CONCURRENCY", "2"))
+    )
+    rate_limit_window_seconds: int = field(
+        default_factory=lambda: int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+    )
+    rag_rate_limit: int = field(
+        default_factory=lambda: int(os.getenv("RAG_RATE_LIMIT", "20"))
+    )
+    admin_login_rate_limit: int = field(
+        default_factory=lambda: int(os.getenv("ADMIN_LOGIN_RATE_LIMIT", "5"))
+    )
+    trust_proxy_headers: bool = field(
+        default_factory=lambda: _env_bool("TRUST_PROXY_HEADERS", False)
+    )
     storage_endpoint: str = field(default_factory=lambda: os.getenv("STORAGE_ENDPOINT", ""))
     storage_region: str = field(default_factory=lambda: os.getenv("STORAGE_REGION", "auto"))
     storage_bucket: str = field(default_factory=lambda: os.getenv("STORAGE_BUCKET", ""))
@@ -39,6 +60,9 @@ class Settings:
     )
     ollama_embedding_model: str = field(
         default_factory=lambda: os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
+    )
+    ollama_request_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", "120"))
     )
     index_build_mode: str = field(
         default_factory=lambda: os.getenv("INDEX_BUILD_MODE", "chroma").strip().lower()

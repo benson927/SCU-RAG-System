@@ -12,6 +12,7 @@ from backend.api.admin_router import router
 from backend.auth import create_admin_token
 from backend.database import Base, get_session
 from backend.models import IndexJob
+from backend.security import reset_rate_limits
 from backend.services import document_service
 
 
@@ -35,10 +36,12 @@ class TestAdminApi(unittest.TestCase):
                 "ADMIN_TOKEN_SECRET": "test-secret",
                 "ADMIN_TOKEN_TTL_SECONDS": "60",
                 "MAX_PDF_SIZE_BYTES": "32",
+                "ADMIN_LOGIN_RATE_LIMIT": "100",
             },
             clear=False,
         )
         self.environment.start()
+        reset_rate_limits()
         engine = create_engine(
             "sqlite+pysqlite:///:memory:",
             connect_args={"check_same_thread": False},
@@ -70,6 +73,7 @@ class TestAdminApi(unittest.TestCase):
         self.wake_patch.stop()
         self.storage_patch.stop()
         self.environment.stop()
+        reset_rate_limits()
 
     def login_headers(self):
         response = self.client.post("/api/admin/login", json={"password": "test-password"})
@@ -106,6 +110,21 @@ class TestAdminApi(unittest.TestCase):
             401,
         )
         self.assertEqual(self.client.get("/api/admin/documents", headers=self.login_headers()).status_code, 200)
+
+    def test_login_rate_limit(self):
+        reset_rate_limits()
+        with patch.dict(os.environ, {"ADMIN_LOGIN_RATE_LIMIT": "2"}, clear=False):
+            self.assertEqual(
+                self.client.post("/api/admin/login", json={"password": "wrong"}).status_code,
+                401,
+            )
+            self.assertEqual(
+                self.client.post("/api/admin/login", json={"password": "wrong"}).status_code,
+                401,
+            )
+            response = self.client.post("/api/admin/login", json={"password": "wrong"})
+        self.assertEqual(response.status_code, 429)
+        self.assertIn("Retry-After", response.headers)
 
     def test_pdf_validation_and_valid_multipart_upload(self):
         headers = self.login_headers()

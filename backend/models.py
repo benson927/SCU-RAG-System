@@ -1,7 +1,18 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database import Base
@@ -36,6 +47,12 @@ class DocumentVersion(Base):
     __table_args__ = (
         UniqueConstraint("document_id", "version_number", name="uq_document_version_number"),
         UniqueConstraint("checksum", name="uq_document_version_checksum"),
+        CheckConstraint(
+            "status IN ('draft', 'published', 'archived')",
+            name="ck_document_versions_status",
+        ),
+        CheckConstraint("size_bytes > 0", name="ck_document_versions_size_positive"),
+        CheckConstraint("length(checksum) = 64", name="ck_document_versions_checksum_length"),
         Index("ix_document_versions_document_status", "document_id", "status"),
         Index(
             "uq_document_versions_one_published",
@@ -65,6 +82,12 @@ class DocumentVersion(Base):
 
 class IndexJob(Base):
     __tablename__ = "index_jobs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'running', 'succeeded', 'failed')",
+            name="ck_index_jobs_status",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     trigger: Mapped[str] = mapped_column(String(30), nullable=False)

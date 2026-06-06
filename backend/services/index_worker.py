@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import shutil
 import threading
@@ -24,6 +25,7 @@ _worker_thread = None
 _stop_event = threading.Event()
 _wake_event = threading.Event()
 _rebuild_lock = threading.RLock()
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -72,8 +74,8 @@ def _worker_loop() -> None:
             if job_id:
                 _process_job(job_id)
                 continue
-        except Exception as exc:
-            print(f"⚠️ 文件索引 worker 暫時無法連線，稍後重試: {exc}")
+        except Exception:
+            logger.exception("Index worker temporarily unavailable")
         _wake_event.wait(timeout=poll_seconds)
         _wake_event.clear()
 
@@ -122,6 +124,7 @@ def _process_job(job_id: str) -> None:
     try:
         rebuild_managed_index()
     except Exception as exc:
+        logger.exception("Index job failed", extra={"job_id": job_id})
         with session_scope() as session:
             job = session.get(IndexJob, job_id)
             if job is not None:
