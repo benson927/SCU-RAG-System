@@ -1230,13 +1230,13 @@ def get_full_system_status() -> dict:
                         "id": job.id,
                         "trigger": job.trigger,
                         "status": job.status,
-                        "error_message": job.error_message,
                         "created_at": job.created_at.isoformat() if job.created_at else None,
                         "started_at": job.started_at.isoformat() if job.started_at else None,
                         "finished_at": job.finished_at.isoformat() if job.finished_at else None,
                     }
-    except Exception as exc:
-        status["postgresql"] = {"status": "offline", "error": str(exc)}
+    except Exception:
+        logger.exception("Unable to collect document management status")
+        status["postgresql"] = {"status": "offline"}
         status["migration_revision"] = None
         status["storage"] = {"status": "unknown"}
         status["index_worker"] = {"enabled": False, "running": False, "name": None}

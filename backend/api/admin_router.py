@@ -26,7 +26,7 @@ router = APIRouter()
 
 
 class AdminLoginRequest(BaseModel):
-    password: str = Field(min_length=1)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 async def read_pdf_upload(file: UploadFile) -> bytes:
@@ -100,8 +100,8 @@ def get_documents(session: Session = Depends(get_session)):
 
 @router.post("/documents", dependencies=[Depends(require_admin)])
 async def create_document(
-    title: str = Form(...),
-    version_number: str = Form(...),
+    title: str = Form(..., min_length=1, max_length=255),
+    version_number: str = Form(..., min_length=1, max_length=80),
     effective_date: date | None = Form(None),
     file: UploadFile = File(...),
     session: Session = Depends(get_session),
@@ -122,7 +122,7 @@ async def create_document(
 @router.post("/documents/{document_id}/versions", dependencies=[Depends(require_admin)])
 async def create_version(
     document_id: str,
-    version_number: str = Form(...),
+    version_number: str = Form(..., min_length=1, max_length=80),
     effective_date: date | None = Form(None),
     file: UploadFile = File(...),
     session: Session = Depends(get_session),

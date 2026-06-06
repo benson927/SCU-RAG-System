@@ -2,10 +2,20 @@ import contextvars
 import json
 import logging
 import os
+import re
+import uuid
 from datetime import datetime, timezone
 
 
 request_id_context = contextvars.ContextVar("request_id", default=None)
+REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+
+
+def normalize_request_id(value: str | None) -> str:
+    candidate = (value or "").strip()
+    if candidate and REQUEST_ID_RE.fullmatch(candidate):
+        return candidate
+    return str(uuid.uuid4())
 
 
 class JsonFormatter(logging.Formatter):

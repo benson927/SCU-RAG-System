@@ -4,6 +4,7 @@ import os
 import shutil
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
@@ -20,6 +21,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 MANAGED_DATA_DIR = os.path.join(_PROJECT_ROOT, "data", "managed_documents")
 CHROMA_DATA_DIR = os.path.join(_PROJECT_ROOT, "chroma_db")
 MANAGED_MANIFEST_NAME = "manifest.json"
+CHROMA_MANIFEST_NAME = "managed_manifest.json"
 
 _worker_thread = None
 _stop_event = threading.Event()
@@ -97,9 +99,51 @@ def _prepare_startup_jobs() -> None:
             .where(IndexJob.status.in_(["pending", "running"]))
             .limit(1)
         )
-        index_missing = not os.path.exists(MANAGED_DATA_DIR) or not os.path.exists(CHROMA_DATA_DIR)
-        if published_version and not active_job and index_missing:
+        index_incomplete = not _index_artifacts_ready()
+        if published_version and not active_job and index_incomplete:
             enqueue_index_job(session, "startup_rebuild")
+
+
+def _load_json_file(path: str) -> dict | None:
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            value = json.load(handle)
+        return value if isinstance(value, dict) else None
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _index_artifacts_ready() -> bool:
+    managed_manifest = _load_json_file(
+        os.path.join(MANAGED_DATA_DIR, MANAGED_MANIFEST_NAME)
+    )
+    chroma_manifest = _load_json_file(
+        os.path.join(CHROMA_DATA_DIR, CHROMA_MANIFEST_NAME)
+    )
+    if not managed_manifest or not chroma_manifest:
+        return False
+
+    generation = managed_manifest.get("generation")
+    documents = managed_manifest.get("documents")
+    if (
+        not isinstance(generation, str)
+        or not generation
+        or generation != chroma_manifest.get("generation")
+        or not isinstance(documents, list)
+    ):
+        return False
+
+    if not os.path.isfile(os.path.join(CHROMA_DATA_DIR, "db_meta.json")):
+        return False
+    for document in documents:
+        filename = document.get("filename") if isinstance(document, dict) else None
+        if (
+            not isinstance(filename, str)
+            or os.path.basename(filename) != filename
+            or not os.path.isfile(os.path.join(MANAGED_DATA_DIR, filename))
+        ):
+            return False
+    return True
 
 
 def _claim_next_job() -> str | None:
@@ -201,7 +245,11 @@ def rebuild_managed_index() -> None:
         chroma_staging = None
         chroma_backup = None
         mapping = {}
-        manifest = {"version": 1, "documents": []}
+        manifest = {
+            "version": 1,
+            "generation": str(uuid.uuid4()),
+            "documents": [],
+        }
         try:
             storage = get_storage() if versions else None
             for version in versions:
@@ -234,6 +282,20 @@ def rebuild_managed_index() -> None:
             _clear_runtime_caches(clear_db=True)
             chroma_staging = _create_staging_directory(CHROMA_DIR, "chroma")
             _build_vector_index(chroma_staging, manifest)
+            with open(
+                os.path.join(chroma_staging, CHROMA_MANIFEST_NAME),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump(
+                    {
+                        "version": manifest["version"],
+                        "generation": manifest["generation"],
+                    },
+                    handle,
+                    ensure_ascii=False,
+                    indent=2,
+                )
             chroma_backup = _swap_directory_contents(
                 CHROMA_DIR,
                 chroma_staging,

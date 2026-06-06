@@ -1,10 +1,13 @@
 from contextlib import contextmanager
+import logging
 from typing import Generator
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from backend.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -30,8 +33,24 @@ def get_engine():
         return None
     if _engine is None:
         url = normalize_database_url(settings.database_url)
-        connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-        _engine = create_engine(url, pool_pre_ping=True, connect_args=connect_args)
+        if url.startswith("sqlite"):
+            connect_args = {"check_same_thread": False}
+            engine_options = {}
+        else:
+            connect_args = {
+                "connect_timeout": max(1, settings.database_connect_timeout_seconds)
+            }
+            engine_options = {
+                "pool_size": max(1, settings.database_pool_size),
+                "max_overflow": max(0, settings.database_max_overflow),
+                "pool_timeout": max(1, settings.database_pool_timeout_seconds),
+            }
+        _engine = create_engine(
+            url,
+            pool_pre_ping=True,
+            connect_args=connect_args,
+            **engine_options,
+        )
         _session_factory = sessionmaker(bind=_engine, expire_on_commit=False)
     return _engine
 
@@ -68,8 +87,9 @@ def check_database_health() -> dict:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
         return {"status": "online"}
-    except Exception as exc:
-        return {"status": "offline", "error": str(exc)}
+    except Exception:
+        logger.exception("Database health check failed")
+        return {"status": "offline"}
 
 
 def get_migration_revision() -> str | None:

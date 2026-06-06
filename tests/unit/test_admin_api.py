@@ -126,6 +126,19 @@ class TestAdminApi(unittest.TestCase):
         self.assertEqual(response.status_code, 429)
         self.assertIn("Retry-After", response.headers)
 
+    def test_rejects_oversized_admin_fields(self):
+        password = self.client.post(
+            "/api/admin/login",
+            json={"password": "x" * 1025},
+        )
+        self.assertEqual(password.status_code, 422)
+
+        headers = self.login_headers()
+        title = self.upload_document(headers, title="x" * 256)
+        self.assertEqual(title.status_code, 422)
+        version = self.upload_document(headers, version="v" * 81)
+        self.assertEqual(version.status_code, 422)
+
     def test_pdf_validation_and_valid_multipart_upload(self):
         headers = self.login_headers()
         wrong_mime = self.client.post(

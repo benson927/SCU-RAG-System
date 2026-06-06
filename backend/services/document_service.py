@@ -58,6 +58,8 @@ def create_document_with_version(
     title = title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="文件標題不可為空")
+    if len(title) > 255:
+        raise HTTPException(status_code=400, detail="文件標題不可超過 255 個字元")
     version_number = validate_version_number(version_number)
     checksum, size_bytes = validate_pdf(filename, content_type, content)
     source_alias = os.path.basename(filename)[:255]

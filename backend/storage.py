@@ -1,6 +1,9 @@
 from functools import lru_cache
+import logging
 
 from backend.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class S3Storage:
@@ -14,7 +17,15 @@ class S3Storage:
         except ImportError as exc:
             raise RuntimeError("缺少 boto3 套件") from exc
 
-        config = Config(s3={"addressing_style": "path" if settings.storage_force_path_style else "virtual"})
+        config = Config(
+            connect_timeout=max(1, settings.storage_connect_timeout_seconds),
+            read_timeout=max(1, settings.storage_read_timeout_seconds),
+            retries={
+                "total_max_attempts": max(1, settings.storage_max_attempts),
+                "mode": "standard",
+            },
+            s3={"addressing_style": "path" if settings.storage_force_path_style else "virtual"},
+        )
         self.bucket = settings.storage_bucket
         self.client = boto3.client(
             "s3",
@@ -43,12 +54,12 @@ class S3Storage:
         try:
             self.client.head_bucket(Bucket=self.bucket)
             return {"status": "online", "bucket_ready": True, "bucket": self.bucket}
-        except Exception as exc:
+        except Exception:
+            logger.exception("Object storage health check failed")
             return {
                 "status": "offline",
                 "bucket_ready": False,
                 "bucket": self.bucket,
-                "error": str(exc),
             }
 
 
@@ -62,5 +73,6 @@ def check_storage_health() -> dict:
         return {"status": "not_configured", "bucket_ready": False}
     try:
         return get_storage().health()
-    except Exception as exc:
-        return {"status": "offline", "error": str(exc)}
+    except Exception:
+        logger.exception("Unable to initialize object storage health check")
+        return {"status": "offline", "bucket_ready": False}

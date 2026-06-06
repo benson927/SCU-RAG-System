@@ -2,6 +2,7 @@ import os
 import time
 import unittest
 import uuid
+import json
 
 
 RUN_INTEGRATION = os.getenv("RUN_COMPOSE_INTEGRATION") == "1"
@@ -112,6 +113,16 @@ class TestComposeIntegration(unittest.TestCase):
         publish.raise_for_status()
         job_id = publish.json()["id"]
         self.wait_for_job(job_id)
+
+        with open("/app/data/managed_documents/manifest.json", "r", encoding="utf-8") as handle:
+            managed_manifest = json.load(handle)
+        with open("/app/chroma_db/managed_manifest.json", "r", encoding="utf-8") as handle:
+            chroma_manifest = json.load(handle)
+        self.assertTrue(managed_manifest["generation"])
+        self.assertEqual(
+            chroma_manifest["generation"],
+            managed_manifest["generation"],
+        )
 
         new_version = self.httpx.post(
             f"{self.api_url}/api/admin/documents/{response.json()['id']}/versions",

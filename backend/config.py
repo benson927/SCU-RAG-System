@@ -20,6 +20,18 @@ class Settings:
     max_pdf_size_bytes: int = field(
         default_factory=lambda: int(os.getenv("MAX_PDF_SIZE_BYTES", str(20 * 1024 * 1024)))
     )
+    database_connect_timeout_seconds: int = field(
+        default_factory=lambda: int(os.getenv("DATABASE_CONNECT_TIMEOUT_SECONDS", "10"))
+    )
+    database_pool_timeout_seconds: int = field(
+        default_factory=lambda: int(os.getenv("DATABASE_POOL_TIMEOUT_SECONDS", "10"))
+    )
+    database_pool_size: int = field(
+        default_factory=lambda: int(os.getenv("DATABASE_POOL_SIZE", "5"))
+    )
+    database_max_overflow: int = field(
+        default_factory=lambda: int(os.getenv("DATABASE_MAX_OVERFLOW", "5"))
+    )
     max_query_length: int = field(
         default_factory=lambda: int(os.getenv("MAX_QUERY_LENGTH", "1000"))
     )
@@ -48,6 +60,15 @@ class Settings:
     storage_secret_key: str = field(default_factory=lambda: os.getenv("STORAGE_SECRET_KEY", ""))
     storage_force_path_style: bool = field(
         default_factory=lambda: _env_bool("STORAGE_FORCE_PATH_STYLE", True)
+    )
+    storage_connect_timeout_seconds: int = field(
+        default_factory=lambda: int(os.getenv("STORAGE_CONNECT_TIMEOUT_SECONDS", "5"))
+    )
+    storage_read_timeout_seconds: int = field(
+        default_factory=lambda: int(os.getenv("STORAGE_READ_TIMEOUT_SECONDS", "30"))
+    )
+    storage_max_attempts: int = field(
+        default_factory=lambda: int(os.getenv("STORAGE_MAX_ATTEMPTS", "3"))
     )
     index_worker_poll_seconds: float = field(
         default_factory=lambda: float(os.getenv("INDEX_WORKER_POLL_SECONDS", "2"))

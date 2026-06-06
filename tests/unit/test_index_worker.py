@@ -76,6 +76,14 @@ class TestIndexWorkerAtomicSync(unittest.TestCase):
                 manifest = json.load(handle)
             self.assertEqual(manifest["documents"][0]["source_alias"], "legacy-law.pdf")
             self.assertEqual(manifest["documents"][0]["title"], "測試法規")
+            self.assertTrue(manifest["generation"])
+            with open(
+                os.path.join(chroma_dir, "managed_manifest.json"),
+                "r",
+                encoding="utf-8",
+            ) as handle:
+                chroma_manifest = json.load(handle)
+            self.assertEqual(chroma_manifest["generation"], manifest["generation"])
             build_index.assert_called_once()
             build_path, build_manifest = build_index.call_args.args
             self.assertEqual(os.path.dirname(build_path), chroma_dir)
@@ -195,6 +203,103 @@ class TestIndexWorkerStartupRecovery(unittest.TestCase):
             index_worker, "MANAGED_DATA_DIR", os.path.join(temp_dir, "managed")
         ), patch.object(index_worker, "CHROMA_DATA_DIR", os.path.join(temp_dir, "chroma")):
             index_worker._prepare_startup_jobs()
+
+        with self.Session() as session:
+            self.assertEqual(session.query(IndexJob).count(), 1)
+
+    def test_empty_existing_directories_trigger_startup_rebuild(self):
+        with self.Session() as session:
+            self.add_published_version(session)
+            session.commit()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            managed_dir = os.path.join(temp_dir, "managed")
+            chroma_dir = os.path.join(temp_dir, "chroma")
+            os.makedirs(managed_dir)
+            os.makedirs(chroma_dir)
+            with patch.object(index_worker, "MANAGED_DATA_DIR", managed_dir), patch.object(
+                index_worker, "CHROMA_DATA_DIR", chroma_dir
+            ):
+                index_worker._prepare_startup_jobs()
+
+        with self.Session() as session:
+            job = session.query(IndexJob).one()
+            self.assertEqual(job.trigger, "startup_rebuild")
+            self.assertEqual(job.status, "pending")
+
+    def test_matching_generation_does_not_trigger_startup_rebuild(self):
+        with self.Session() as session:
+            self.add_published_version(session)
+            session.commit()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            managed_dir = os.path.join(temp_dir, "managed")
+            chroma_dir = os.path.join(temp_dir, "chroma")
+            os.makedirs(managed_dir)
+            os.makedirs(chroma_dir)
+            generation = "generation-1"
+            with open(os.path.join(managed_dir, "law.pdf"), "wb") as handle:
+                handle.write(b"%PDF-1.4")
+            with open(os.path.join(managed_dir, "manifest.json"), "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "version": 1,
+                        "generation": generation,
+                        "documents": [{"filename": "law.pdf"}],
+                    },
+                    handle,
+                )
+            with open(
+                os.path.join(chroma_dir, "managed_manifest.json"),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump({"version": 1, "generation": generation}, handle)
+            with open(os.path.join(chroma_dir, "db_meta.json"), "w", encoding="utf-8") as handle:
+                json.dump({}, handle)
+
+            with patch.object(index_worker, "MANAGED_DATA_DIR", managed_dir), patch.object(
+                index_worker, "CHROMA_DATA_DIR", chroma_dir
+            ):
+                index_worker._prepare_startup_jobs()
+
+        with self.Session() as session:
+            self.assertEqual(session.query(IndexJob).count(), 0)
+
+    def test_generation_mismatch_triggers_startup_rebuild(self):
+        with self.Session() as session:
+            self.add_published_version(session)
+            session.commit()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            managed_dir = os.path.join(temp_dir, "managed")
+            chroma_dir = os.path.join(temp_dir, "chroma")
+            os.makedirs(managed_dir)
+            os.makedirs(chroma_dir)
+            with open(os.path.join(managed_dir, "law.pdf"), "wb") as handle:
+                handle.write(b"%PDF-1.4")
+            with open(os.path.join(managed_dir, "manifest.json"), "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "version": 1,
+                        "generation": "managed-generation",
+                        "documents": [{"filename": "law.pdf"}],
+                    },
+                    handle,
+                )
+            with open(
+                os.path.join(chroma_dir, "managed_manifest.json"),
+                "w",
+                encoding="utf-8",
+            ) as handle:
+                json.dump({"version": 1, "generation": "chroma-generation"}, handle)
+            with open(os.path.join(chroma_dir, "db_meta.json"), "w", encoding="utf-8") as handle:
+                json.dump({}, handle)
+
+            with patch.object(index_worker, "MANAGED_DATA_DIR", managed_dir), patch.object(
+                index_worker, "CHROMA_DATA_DIR", chroma_dir
+            ):
+                index_worker._prepare_startup_jobs()
 
         with self.Session() as session:
             self.assertEqual(session.query(IndexJob).count(), 1)

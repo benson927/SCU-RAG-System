@@ -1,7 +1,6 @@
 import logging
 import os
 import time
-import uuid
 from contextlib import asynccontextmanager
 
 
@@ -26,7 +25,11 @@ from backend.api.admin_router import router as admin_router
 from backend.api.router import router as rag_router
 from backend.config import get_settings
 from backend.database import check_database_health, get_migration_revision
-from backend.logging_config import configure_logging, request_id_context
+from backend.logging_config import (
+    configure_logging,
+    normalize_request_id,
+    request_id_context,
+)
 from backend.services.index_worker import start_index_worker, stop_index_worker
 from backend.storage import check_storage_health
 
@@ -77,7 +80,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def request_context_middleware(request, call_next):
-    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request_id = normalize_request_id(request.headers.get("X-Request-ID"))
     token = request_id_context.set(request_id)
     started_at = time.monotonic()
     status_code = 500

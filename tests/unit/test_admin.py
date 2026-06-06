@@ -5,6 +5,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from backend.auth import create_admin_token, decode_admin_token, verify_admin_password
 from backend.database import Base
@@ -56,15 +57,20 @@ class TestAdminAuth(unittest.TestCase):
 
 class TestDocumentLifecycle(unittest.TestCase):
     def setUp(self):
-        engine = create_engine("sqlite+pysqlite:///:memory:")
-        Base.metadata.create_all(engine)
-        self.Session = sessionmaker(bind=engine, expire_on_commit=False)
+        self.engine = create_engine(
+            "sqlite+pysqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.storage = FakeStorage()
         self.storage_patch = patch.object(document_service, "get_storage", return_value=self.storage)
         self.storage_patch.start()
 
     def tearDown(self):
         self.storage_patch.stop()
+        self.engine.dispose()
 
     def test_pdf_validation_rejects_non_pdf_content(self):
         with self.assertRaises(HTTPException) as raised:
