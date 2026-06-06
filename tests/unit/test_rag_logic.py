@@ -11,6 +11,8 @@ if _CURRENT_DIR not in sys.path:
     sys.path.append(_CURRENT_DIR)
 
 from backend.services import rag_service
+from backend.services import rag_repository
+from backend.services import rag_retrieval
 from backend.services.rag_service import (
     _bm25_top_pdf_docs,
     _build_clarification_message,
@@ -220,7 +222,7 @@ class TestRAGPureLogic(unittest.TestCase):
 
     def test_dense_retrieval_uses_metadata_filters_when_supported(self):
         """Chroma filter 可用時，FAQ/PDF dense 檢索應分別限制 k，避免全量 k=30 搜尋"""
-        rag_service._filter_support_cache = {}
+        rag_retrieval._filter_support_cache = {}
         db = FakeVectorDb(filter_supported=True)
 
         faq_docs, pdf_docs = _retrieve_dense_candidates(db, "工讀時薪是多少")
@@ -233,7 +235,7 @@ class TestRAGPureLogic(unittest.TestCase):
 
     def test_dense_retrieval_falls_back_when_filters_fail(self):
         """Chroma filter 不可用時，應退回 k=30 全量候選並用 Python metadata 分類"""
-        rag_service._filter_support_cache = {}
+        rag_retrieval._filter_support_cache = {}
         db = FakeVectorDb(filter_supported=False)
 
         faq_docs, pdf_docs = _retrieve_dense_candidates(db, "期末考請假期限")
@@ -245,14 +247,17 @@ class TestRAGPureLogic(unittest.TestCase):
 
     def test_empty_filter_result_does_not_disable_filter_cache(self):
         """filter 空結果只應對當次 fallback，不應永久標記 filter 不可用"""
-        rag_service._filter_support_cache = {}
+        rag_retrieval._filter_support_cache = {}
         db = EmptyThenHitVectorDb()
         filter_metadata = {"is_faq": True}
 
         docs, ok = _similarity_search_with_optional_filter(db, "no hit", 4, filter_metadata)
         self.assertEqual(docs, [])
         self.assertFalse(ok)
-        self.assertNotIn(rag_service._filter_cache_key(filter_metadata), rag_service._filter_support_cache)
+        self.assertNotIn(
+            rag_service._filter_cache_key(filter_metadata),
+            rag_retrieval._filter_support_cache,
+        )
 
         docs, ok = _similarity_search_with_optional_filter(db, "has hit", 4, filter_metadata)
         self.assertTrue(ok)
@@ -305,8 +310,8 @@ class TestRAGPureLogic(unittest.TestCase):
                 )
 
             with patch.dict(os.environ, {"DATABASE_URL": "sqlite://"}, clear=False), patch.object(
-                rag_service, "DATA_DIR", data_dir
-            ), patch.object(rag_service, "MANAGED_MANIFEST_PATH", manifest_path):
+                rag_repository, "DATA_DIR", data_dir
+            ), patch.object(rag_repository, "MANAGED_MANIFEST_PATH", manifest_path):
                 entries = _iter_active_faq_entries()
 
             self.assertEqual(len(entries), 1)

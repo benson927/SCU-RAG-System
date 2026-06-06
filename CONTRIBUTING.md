@@ -23,6 +23,7 @@ make test-smoke
 - 新增資料庫 migration，不修改已發布 migration。
 - 不提交 `.env`、credentials、Chroma、managed documents 或生成的 benchmark artifacts。
 - 使用者可見行為應附測試；大型 UI 變更應附截圖。
+- RAG 修改應遵循 [Backend Architecture](docs/architecture.md) 的模組責任，避免把 repository、retrieval 或 model lifecycle 邏輯重新塞回 `rag_service.py`。
 
 ## Commit style
 

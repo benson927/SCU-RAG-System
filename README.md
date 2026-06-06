@@ -189,6 +189,7 @@ make compose-reset       # 刪除所有 Compose 開發資料
 `make compose-reset` 會永久刪除本機 PostgreSQL、MinIO、Chroma 與 managed document volumes。
 
 正式維運、備份、還原與故障排除請參閱 [Operations Guide](docs/operations.md)。
+後端模組責任與依賴方向請參閱 [Backend Architecture](docs/architecture.md)。
 
 Podman 使用者可覆寫 Compose 命令：
 

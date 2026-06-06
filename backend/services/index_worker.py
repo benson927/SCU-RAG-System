@@ -318,7 +318,7 @@ def rebuild_managed_index() -> None:
 def _build_vector_index(chroma_dir: str, manifest: dict) -> None:
     settings = get_settings()
     if settings.index_build_mode == "manifest-only":
-        from backend.services.rag_service import _build_db_meta, _get_pdf_files
+        from backend.services.rag_repository import build_db_meta, get_pdf_files
 
         if os.path.exists(chroma_dir):
             shutil.rmtree(chroma_dir)
@@ -326,7 +326,7 @@ def _build_vector_index(chroma_dir: str, manifest: dict) -> None:
         with open(os.path.join(chroma_dir, "integration-index.json"), "w", encoding="utf-8") as handle:
             json.dump(manifest, handle, ensure_ascii=False, indent=2)
         with open(os.path.join(chroma_dir, "db_meta.json"), "w", encoding="utf-8") as handle:
-            json.dump(_build_db_meta(_get_pdf_files()), handle, ensure_ascii=False, indent=2)
+            json.dump(build_db_meta(get_pdf_files()), handle, ensure_ascii=False, indent=2)
         return
 
     if settings.index_build_mode != "chroma":

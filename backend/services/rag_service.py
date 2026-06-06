@@ -1,57 +1,50 @@
 import os
 import json
 import jieba
-import subprocess
-import urllib.request
-import time
-import heapq
 import threading
-from typing import Optional
 
 from backend.config import get_settings
 
-def ensure_ollama_running():
-    """檢查本地 Ollama 服務是否啟動，若未啟動則嘗試在 macOS 上自動開啟它"""
-    ollama_url = get_settings().ollama_base_url
-    try:
-        # 嘗試在 1 秒內檢測 Ollama 服務是否正常
-        with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
-            if response.status == 200:
-                return True
-    except Exception:
-        # 服務未啟動，嘗試啟動
-        print("🤖 偵測到地端 Ollama 未啟動，嘗試自動開啟 Ollama 應用程式...")
-        try:
-            # 在 macOS 上使用 open -a 啟動應用程式
-            subprocess.Popen(["open", "-a", "Ollama"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # 輪詢等待，直到服務啟動（最多等待 15 秒）
-            for i in range(15):
-                time.sleep(1.0)
-                try:
-                    with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
-                        if response.status == 200:
-                            print("🎉 Ollama 服務已成功啟動！")
-                            return True
-                except Exception:
-                    continue
-            print("⚠️ Ollama 啟動時間較長，請稍後確認是否已在背景載入。")
-        except Exception as e:
-            print(f"❌ 無法自動啟動 Ollama: {e}。請手動開啟 Ollama 應用程式。")
-    return False
-
-from rank_bm25 import BM25Okapi
-from langchain_core.documents import Document
 from langchain_community.vectorstores import Chroma
-from langchain_ollama import OllamaEmbeddings, ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
+from backend.services.rag_models import ensure_ollama_running, get_embeddings, get_llm
+from backend.services.rag_retrieval import (
+    bm25_top_pdf_docs as _bm25_top_pdf_docs,
+    dedupe_documents_by_identity as _dedupe_documents_by_identity,
+    dedupe_queries as _dedupe_queries,
+    doc_matches_source as _doc_matches_source,
+    filter_cache_key as _filter_cache_key,
+    get_pdf_bm25_index as _get_pdf_bm25_index,
+    priority_source_pdf_docs as _priority_source_pdf_docs,
+    reset_retrieval_caches,
+    retrieve_dense_candidates as _retrieve_dense_candidates,
+    rrf_fusion,
+    similarity_search_with_optional_filter as _similarity_search_with_optional_filter,
+    split_dense_docs_by_type as _split_dense_docs_by_type,
+)
+from backend.services.rag_repository import (
+    CHROMA_DIR,
+    DATA_DIR,
+    MANAGED_DATA_DIR,
+    MANAGED_MANIFEST_PATH,
+    build_db_meta as _build_db_meta,
+    clean_pdf_text as _clean_pdf_text,
+    ensure_data_directory,
+    get_faq_count as _get_faq_count,
+    get_pdf_data_dir as _get_pdf_data_dir,
+    get_pdf_files as _get_pdf_files,
+    get_title_mapping as _get_title_mapping,
+    is_db_meta_current as _is_db_meta_current,
+    iter_active_faq_entries as _iter_active_faq_entries,
+    load_managed_manifest as _load_managed_manifest,
+    reset_repository_caches,
+)
+from backend.services.rag_status import (
+    get_full_system_status as _get_full_system_status,
+    reset_status_cache,
+)
 
 # 使用相對於本檔案的絕對路徑，以防在不同工作目錄下啟動服務時導致路徑偏差
-_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(_CURRENT_DIR))
-DATA_DIR = os.path.join(_PROJECT_ROOT, "data")
-MANAGED_DATA_DIR = os.path.join(DATA_DIR, "managed_documents")
-MANAGED_MANIFEST_PATH = os.path.join(MANAGED_DATA_DIR, "manifest.json")
-CHROMA_DIR = os.path.join(_PROJECT_ROOT, "chroma_db")
 _vector_db_lock = threading.RLock()
 
 # 主題關鍵字 → 優先來源文件映射表（用於 RRF 後的主題感知重排序）
@@ -243,229 +236,17 @@ def _build_system_prompt(user_query: str, sources: list) -> str:
     )
 
 
-# 確保 PDF 目錄存在
-if not os.path.exists(DATA_DIR):
-    os.makedirs(DATA_DIR)
+ensure_data_directory()
 
-_embeddings = None
-_llm = None
 _db = None
-_ollama_checked = False
-_status_cache = None
-_status_cache_at = 0.0
-_STATUS_CACHE_TTL_SECONDS = 5.0
-_bm25_cache = {
-    "db_id": None,
-    "pdf_texts": [],
-    "pdf_metadatas": [],
-    "bm25_pdf": None,
-}
-_title_mapping_cache = {
-    "mtime_ns": None,
-    "mapping": {},
-}
-_faq_count_cache = {
-    "signature": None,
-    "count": 0,
-}
-_filter_support_cache = {}
-
-def _get_pdf_data_dir() -> str:
-    return MANAGED_DATA_DIR if get_settings().database_enabled else DATA_DIR
-
-
-def _get_pdf_files() -> list:
-    pdf_dir = _get_pdf_data_dir()
-    return sorted([f for f in os.listdir(pdf_dir) if f.endswith(".pdf")]) if os.path.exists(pdf_dir) else []
-
-def _get_faq_signature() -> Optional[dict]:
-    faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
-    if not os.path.exists(faq_cache_path):
-        return None
-    stat = os.stat(faq_cache_path)
-    signature = {
-        "file": "faq_cache.json",
-        "mtime_ns": stat.st_mtime_ns,
-        "size": stat.st_size,
-    }
-    if get_settings().database_enabled:
-        if not os.path.exists(MANAGED_MANIFEST_PATH):
-            signature["manifest"] = None
-        else:
-            manifest_stat = os.stat(MANAGED_MANIFEST_PATH)
-            signature["manifest"] = {
-                "mtime_ns": manifest_stat.st_mtime_ns,
-                "size": manifest_stat.st_size,
-            }
-    return signature
-
-
-def _load_managed_manifest() -> dict:
-    if not get_settings().database_enabled or not os.path.exists(MANAGED_MANIFEST_PATH):
-        return {"version": 1, "documents": []}
-    try:
-        with open(MANAGED_MANIFEST_PATH, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if isinstance(data.get("documents"), list):
-            return data
-    except Exception:
-        pass
-    return {"version": 1, "documents": []}
-
-
-def _get_active_source_map() -> dict:
-    return {
-        item.get("source_alias"): item
-        for item in _load_managed_manifest().get("documents", [])
-        if item.get("source_alias") and item.get("filename")
-    }
-
-
-def _iter_active_faq_entries() -> list:
-    faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
-    if not os.path.exists(faq_cache_path):
-        return []
-    with open(faq_cache_path, "r", encoding="utf-8") as handle:
-        faq_cache = json.load(handle)
-
-    active_source_map = _get_active_source_map()
-    entries = []
-    for entry in faq_cache.values():
-        source_alias = entry.get("source", "")
-        if get_settings().database_enabled:
-            manifest_entry = active_source_map.get(source_alias)
-            if manifest_entry is None:
-                continue
-            managed_filename = manifest_entry["filename"]
-        else:
-            managed_filename = source_alias
-        entries.append((entry, managed_filename, source_alias))
-    return entries
-
-def _build_db_meta(pdf_files: list) -> dict:
-    return {
-        "files": pdf_files,
-        "faq_signature": _get_faq_signature(),
-    }
-
-def _is_db_meta_current(db_meta: dict, pdf_files: list) -> bool:
-    return db_meta.get("files", []) == pdf_files and db_meta.get("faq_signature") == _get_faq_signature()
 
 def _clear_runtime_caches(clear_db: bool = False):
-    global _db, _status_cache, _status_cache_at, _bm25_cache, _filter_support_cache
+    global _db
     if clear_db:
         _db = None
-    _status_cache = None
-    _status_cache_at = 0.0
-    _bm25_cache = {
-        "db_id": None,
-        "pdf_texts": [],
-        "pdf_metadatas": [],
-        "bm25_pdf": None,
-    }
-    _filter_support_cache = {}
-
-def _clean_pdf_text(text: str) -> str:
-    """修正常見 PDF ligature/編碼破碎字元。"""
-    if not text:
-        return text
-    replacements = {
-        '\u014c': 'ft',  # Ō -> ft (after)
-        '\u019f': 'ti',  # Ɵ -> ti (national)
-        '\u01a9': 'tt',  # Ʃ -> tt (attend)
-        '\ufb00': 'ff',
-        '\ufb01': 'fi',
-        '\ufb02': 'fl',
-        '\ufb03': 'ffi',
-    }
-    for src, dst in replacements.items():
-        text = text.replace(src, dst)
-    return text
-
-def _get_title_mapping() -> dict:
-    """讀取並快取檔名到法規標題的對照表。"""
-    global _title_mapping_cache
-    mapping_paths = [
-        os.path.join(os.path.dirname(__file__), "title_mapping.json"),
-        os.path.join(MANAGED_DATA_DIR, "title_mapping.json"),
-    ]
-    signature = tuple(
-        (path, os.stat(path).st_mtime_ns)
-        for path in mapping_paths
-        if os.path.exists(path)
-    )
-    if _title_mapping_cache["mtime_ns"] == signature:
-        return _title_mapping_cache["mapping"]
-
-    mapping = {}
-    for mapping_path in mapping_paths:
-        if not os.path.exists(mapping_path):
-            continue
-        try:
-            with open(mapping_path, "r", encoding="utf-8") as f:
-                mapping.update(json.load(f))
-        except Exception:
-            continue
-
-    _title_mapping_cache = {
-        "mtime_ns": signature,
-        "mapping": mapping,
-    }
-    return mapping
-
-def _get_faq_count() -> int:
-    """統計 FAQ 題數，並依 faq_cache.json 簽章快取結果。"""
-    global _faq_count_cache
-    signature = _get_faq_signature()
-    if _faq_count_cache["signature"] == signature:
-        return _faq_count_cache["count"]
-
-    faq_count = 0
-    faq_cache_path = os.path.join(DATA_DIR, "faq_cache.json")
-    if signature is not None:
-        try:
-            for entry, _, _ in _iter_active_faq_entries():
-                faq_count += len([q for q in entry.get("faqs", []) if q.strip()])
-        except Exception:
-            faq_count = 0
-
-    _faq_count_cache = {
-        "signature": signature,
-        "count": faq_count,
-    }
-    return faq_count
-
-def get_embeddings():
-    """延遲載入並取得地端嵌入模型，只在需要時檢查 Ollama"""
-    global _embeddings, _ollama_checked
-    if _embeddings is None:
-        if not _ollama_checked:
-            ensure_ollama_running()
-            _ollama_checked = True
-        # 初始化地端嵌入模型
-        # 使用 Ollama 的 nomic-embed-text，此模型專為文本嵌入設計，適合地端高效執行。
-        _embeddings = OllamaEmbeddings(
-            model=get_settings().ollama_embedding_model,
-            base_url=get_settings().ollama_base_url,
-            client_kwargs={"timeout": get_settings().ollama_request_timeout_seconds},
-        )
-    return _embeddings
-
-def get_llm():
-    """延遲載入並取得地端 LLM，只在需要時檢查 Ollama"""
-    global _llm, _ollama_checked
-    if _llm is None:
-        if not _ollama_checked:
-            ensure_ollama_running()
-            _ollama_checked = True
-        # 初始化地端 LLM 引擎 (使用 gemma3)
-        _llm = ChatOllama(
-            model=get_settings().ollama_chat_model,
-            base_url=get_settings().ollama_base_url,
-            client_kwargs={"timeout": get_settings().ollama_request_timeout_seconds},
-            temperature=0.0  # 降低輸出隨機性，回答仍須以引用來源人工確認。
-        )
-    return _llm
+    reset_status_cache()
+    reset_retrieval_caches()
+    reset_repository_caches()
 
 def init_vector_db(force_rebuild: bool = False, persist_directory: str | None = None):
     """初始化並建立向量資料庫，並在 PDF 檔案有變動時自動重建"""
@@ -639,20 +420,6 @@ def check_vector_db_status() -> dict:
     else:
         return {"status": "outdated", "files": pdf_files}
 
-def _dedupe_queries(queries: list, limit: int = 4) -> list:
-    """保持順序去除重複查詢，避免 dense/BM25 檢索做重工。"""
-    deduped = []
-    seen = set()
-    for query in queries:
-        cleaned = query.strip()
-        key = cleaned.casefold()
-        if cleaned and key not in seen:
-            seen.add(key)
-            deduped.append(cleaned)
-        if len(deduped) >= limit:
-            break
-    return deduped
-
 def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
     """利用 LLM 將使用者查詢擴展為多個檢索句"""
     queries = [user_query]
@@ -713,183 +480,6 @@ def generate_expanded_queries(user_query: str, api_key: str = None) -> list:
         print(f"⚠️ 查詢擴展失敗，將僅使用原問句進行檢索: {e}")
         
     return _dedupe_queries(queries)
-
-def rrf_fusion(dense_results_list: list, sparse_results_list: list, k: int = 60) -> list:
-    """倒數排序融合 (RRF) 演算法"""
-    rrf_scores = {}
-    doc_map = {}
-    
-    def add_ranks(results_list):
-        for results in results_list:
-            for rank, doc in enumerate(results):
-                doc_id = doc.page_content
-                doc_map[doc_id] = doc
-                if doc_id not in rrf_scores:
-                    rrf_scores[doc_id] = 0.0
-                rrf_scores[doc_id] += 1.0 / (k + rank + 1)
-                
-    add_ranks(dense_results_list)
-    add_ranks(sparse_results_list)
-    
-    sorted_docs = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
-    return [doc_map[doc_id] for doc_id, score in sorted_docs]
-
-def _get_pdf_bm25_index(db) -> dict:
-    """取得 PDF chunk 的 BM25 索引；同一個 Chroma 實例只建立一次。"""
-    global _bm25_cache
-    if _bm25_cache["db_id"] == id(db):
-        return _bm25_cache
-
-    all_data = db.get()
-    all_texts = all_data.get("documents", [])
-    all_metadatas = all_data.get("metadatas", [])
-
-    pdf_texts = []
-    pdf_metadatas = []
-    for txt, meta in zip(all_texts, all_metadatas):
-        if not meta.get("faq_question"):
-            pdf_texts.append(txt)
-            pdf_metadatas.append(meta)
-
-    bm25_pdf = None
-    if pdf_texts:
-        tokenized_pdf_corpus = [list(jieba.cut(doc)) for doc in pdf_texts]
-        bm25_pdf = BM25Okapi(tokenized_pdf_corpus)
-
-    _bm25_cache = {
-        "db_id": id(db),
-        "pdf_texts": pdf_texts,
-        "pdf_metadatas": pdf_metadatas,
-        "bm25_pdf": bm25_pdf,
-    }
-    return _bm25_cache
-
-def _filter_cache_key(filter_metadata: dict) -> str:
-    return json.dumps(filter_metadata, sort_keys=True, ensure_ascii=False)
-
-def _split_dense_docs_by_type(docs: list) -> tuple:
-    docs_faq = [d for d in docs if d.metadata.get("is_faq") is True]
-    docs_pdf = [d for d in docs if d.metadata.get("is_faq") is not True]
-    return docs_faq, docs_pdf
-
-def _similarity_search_with_optional_filter(db, query: str, k: int, filter_metadata: dict, fallback_on_empty: bool = True) -> tuple:
-    """嘗試使用 Chroma metadata filter；不可用時回傳 ([], False) 讓上層走安全 fallback。"""
-    global _filter_support_cache
-    cache_key = _filter_cache_key(filter_metadata)
-    if _filter_support_cache.get(cache_key) is False:
-        return [], False
-
-    try:
-        docs = db.similarity_search(query, k=k, filter=filter_metadata)
-        if fallback_on_empty and not docs:
-            # 空結果可能只是該 query 沒命中，不代表 Chroma filter 不支援。
-            return [], False
-        _filter_support_cache[cache_key] = True
-        return docs, True
-    except Exception as e:
-        print(f"⚠️ Chroma metadata filter 不可用，改用 Python 層分類 fallback: {e}")
-        _filter_support_cache[cache_key] = False
-        return [], False
-
-def _retrieve_dense_candidates(db, query: str) -> tuple:
-    """雙路 dense 檢索：優先 metadata filter，失敗時退回 k=30 全量候選分類。"""
-    faq_docs, faq_filter_ok = _similarity_search_with_optional_filter(
-        db,
-        query,
-        k=4,
-        filter_metadata={"is_faq": True},
-    )
-    pdf_docs, pdf_filter_ok = _similarity_search_with_optional_filter(
-        db,
-        query,
-        k=8,
-        filter_metadata={"is_faq": {"$ne": True}},
-    )
-
-    if faq_filter_ok and pdf_filter_ok:
-        return faq_docs[:4], pdf_docs[:8]
-
-    fallback_docs = db.similarity_search(query, k=30)
-    fallback_faq_docs, fallback_pdf_docs = _split_dense_docs_by_type(fallback_docs)
-
-    if not faq_filter_ok:
-        faq_docs = fallback_faq_docs[:4]
-    if not pdf_filter_ok:
-        pdf_docs = fallback_pdf_docs[:8]
-
-    return faq_docs[:4], pdf_docs[:8]
-
-def _bm25_top_pdf_docs(bm25_pdf, pdf_texts: list, pdf_metadatas: list, tokenized_query: list, n: int = 4) -> list:
-    """用單次 BM25 scoring 取得 top N PDF docs。"""
-    scores = bm25_pdf.get_scores(tokenized_query)
-    top_n = min(n, len(pdf_texts))
-    top_indices = heapq.nlargest(top_n, range(len(pdf_texts)), key=lambda idx: scores[idx])
-
-    docs = []
-    for idx in top_indices:
-        if scores[idx] > 0:
-            docs.append(Document(page_content=pdf_texts[idx], metadata=pdf_metadatas[idx]))
-    return docs
-
-def _doc_identity(doc: Document) -> tuple:
-    """取得文件去重 key；FAQ 優先用原文內容，PDF 用來源頁碼與內容前綴。"""
-    meta = doc.metadata or {}
-    source = os.path.basename(meta.get("source", ""))
-    page = meta.get("page", "")
-    content = meta.get("original_content") or doc.page_content or ""
-    normalized_content = " ".join(content.split())
-    return (source, page, normalized_content[:220])
-
-
-def _doc_matches_source(doc: Document, source_alias: str) -> bool:
-    metadata = doc.metadata or {}
-    return (
-        source_alias == metadata.get("source_alias")
-        or source_alias in metadata.get("source", "")
-    )
-
-def _dedupe_documents_by_identity(docs: list, limit: Optional[int] = None) -> list:
-    """保留順序去除重複文件，避免同一頁/同一 FAQ 原文重複塞入 Context。"""
-    deduped = []
-    seen = set()
-    for doc in docs:
-        key = _doc_identity(doc)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(doc)
-        if limit is not None and len(deduped) >= limit:
-            break
-    return deduped
-
-def _priority_source_pdf_docs(bm25_index: dict, query: str, priority_src: str, n: int = 4) -> list:
-    """當融合排序沒抓到主題文件時，從指定 PDF 內補回候選 chunks。"""
-    if not priority_src:
-        return []
-
-    candidate_pairs = [
-        (text, metadata)
-        for text, metadata in zip(bm25_index.get("pdf_texts", []), bm25_index.get("pdf_metadatas", []))
-        if priority_src == metadata.get("source_alias") or priority_src in metadata.get("source", "")
-    ]
-    if not candidate_pairs:
-        return []
-
-    candidate_texts = [text for text, _ in candidate_pairs]
-    candidate_metadatas = [metadata for _, metadata in candidate_pairs]
-    tokenized_query = list(jieba.cut(query))
-
-    if tokenized_query:
-        bm25 = BM25Okapi([list(jieba.cut(text)) for text in candidate_texts])
-        docs = _bm25_top_pdf_docs(bm25, candidate_texts, candidate_metadatas, tokenized_query, n=n)
-        if docs:
-            return docs
-
-    ordered_pairs = sorted(candidate_pairs, key=lambda pair: pair[1].get("page", 0))
-    return [
-        Document(page_content=text, metadata=metadata)
-        for text, metadata in ordered_pairs[:n]
-    ]
 
 def query_rag_stream(user_query: str, api_key: str = None, db = None, disable_expansion: bool = False):
     """查詢 RAG 系統並以生成器方式返回 metadata 與答案字元流 (支援 RRF 融合排序、查詢擴展與 Gemini API 備援)"""
@@ -1173,75 +763,4 @@ def query_rag(user_query: str, api_key: str = None, db = None, disable_expansion
     }
 
 def get_full_system_status() -> dict:
-    """彙整並回傳系統完整狀態，包括向量庫健康度、載入法規名稱、FAQ 數量與 Ollama 狀態"""
-    global _status_cache, _status_cache_at
-
-    now = time.time()
-    if _status_cache is not None and now - _status_cache_at < _STATUS_CACHE_TTL_SECONDS:
-        return dict(_status_cache)
-
-    # 1. 取得向量庫狀態與原始 PDF 列表
-    db_status_info = check_vector_db_status()
-    db_status = db_status_info.get("status", "empty")
-    raw_files = db_status_info.get("files", [])
-    
-    # 2. 載入標題對照表並轉換檔名
-    title_mapping = _get_title_mapping()
-            
-    loaded_files = [title_mapping.get(f, f) for f in raw_files]
-    
-    # 3. 統計 FAQ 數量
-    faq_count = _get_faq_count()
-            
-    # 4. 偵測 Ollama 在線狀態 (不嘗試自動開啟，僅快速探測)
-    ollama_status = "offline"
-    try:
-        with urllib.request.urlopen(get_settings().ollama_base_url, timeout=0.5) as response:
-            if response.status == 200:
-                ollama_status = "online"
-    except Exception:
-        pass
-        
-    status = {
-        "db_status": db_status,
-        "pdf_count": len(raw_files),
-        "faq_count": faq_count,
-        "ollama_status": ollama_status,
-        "loaded_files": loaded_files,
-        "document_management_mode": "postgresql" if get_settings().database_enabled else "legacy",
-    }
-
-    try:
-        from backend.database import check_database_health, get_migration_revision, session_scope
-        from backend.services.document_service import get_latest_index_job
-        from backend.services.index_worker import get_worker_status
-        from backend.storage import check_storage_health
-
-        status["postgresql"] = check_database_health()
-        status["migration_revision"] = get_migration_revision()
-        status["storage"] = check_storage_health()
-        status["index_worker"] = get_worker_status()
-        status["latest_index_job"] = None
-        if get_settings().database_enabled and status["postgresql"].get("status") == "online":
-            with session_scope() as session:
-                job = get_latest_index_job(session)
-                if job is not None:
-                    status["latest_index_job"] = {
-                        "id": job.id,
-                        "trigger": job.trigger,
-                        "status": job.status,
-                        "created_at": job.created_at.isoformat() if job.created_at else None,
-                        "started_at": job.started_at.isoformat() if job.started_at else None,
-                        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
-                    }
-    except Exception:
-        logger.exception("Unable to collect document management status")
-        status["postgresql"] = {"status": "offline"}
-        status["migration_revision"] = None
-        status["storage"] = {"status": "unknown"}
-        status["index_worker"] = {"enabled": False, "running": False, "name": None}
-        status["latest_index_job"] = None
-
-    _status_cache = dict(status)
-    _status_cache_at = now
-    return status
+    return _get_full_system_status(check_vector_db_status)
