@@ -1,0 +1,67 @@
+{
+  "title": "SCU RAG 商業與技術簡報",
+  "version": "2026-06",
+  "slideCount": 12,
+  "slides": [
+    {
+      "src": "/slides/slide_1.webp",
+      "title": "封面",
+      "shortTitle": "封面"
+    },
+    {
+      "src": "/slides/slide_2.webp",
+      "title": "問題與營運風險",
+      "shortTitle": "問題與營運風險"
+    },
+    {
+      "src": "/slides/slide_3.webp",
+      "title": "價值主張",
+      "shortTitle": "價值主張"
+    },
+    {
+      "src": "/slides/slide_4.webp",
+      "title": "適用人群",
+      "shortTitle": "適用人群"
+    },
+    {
+      "src": "/slides/slide_5.webp",
+      "title": "應用機會",
+      "shortTitle": "應用機會"
+    },
+    {
+      "src": "/slides/slide_6.webp",
+      "title": "商業模式",
+      "shortTitle": "商業模式"
+    },
+    {
+      "src": "/slides/slide_7.webp",
+      "title": "資料架構",
+      "shortTitle": "資料架構"
+    },
+    {
+      "src": "/slides/slide_8.webp",
+      "title": "RAG 引擎",
+      "shortTitle": "RAG 引擎"
+    },
+    {
+      "src": "/slides/slide_9.webp",
+      "title": "技術堆疊與能力",
+      "shortTitle": "技術堆疊與能力"
+    },
+    {
+      "src": "/slides/slide_10.webp",
+      "title": "發布流程",
+      "shortTitle": "發布流程"
+    },
+    {
+      "src": "/slides/slide_11.webp",
+      "title": "工程證據與限制",
+      "shortTitle": "工程證據與限制"
+    },
+    {
+      "src": "/slides/slide_12.webp",
+      "title": "產品 Roadmap",
+      "shortTitle": "產品 Roadmap"
+    }
+  ]
+}

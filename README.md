@@ -226,15 +226,23 @@ make test-smoke
 - [2026 歷史 benchmark 摘要](docs/benchmark-2026.md)
 - `scripts/evaluate_rag.py`：重新執行 104 題本機 benchmark，輸出至 ignored 的 `artifacts/`。
 - `scripts/generate_faq_dataset.py`：以 Ollama 或 Gemini 增量更新 FAQ cache。
-- `scripts/convert_presentation.py`：由保留的簡報 PDF 重建 1920×1080 WebP 投影片。
+- `scripts/update_presentation.py`：更新簡報 PDF、WebP 投影片與前端 manifest。
+- `scripts/convert_presentation.py`：由保留的簡報 PDF 重建 1920×1080 WebP 與 manifest。
 
 ```bash
 python scripts/evaluate_rag.py --limit 10
 python scripts/generate_faq_dataset.py --provider ollama
-python scripts/convert_presentation.py
+make presentation-update
 ```
 
-前端內嵌簡報使用 9 張 WebP；原始 PDF 保留於 `frontend/public/Smart_SCU_Law_Navigator＿1.pdf`。歷史 benchmark 的 raw JSON/Markdown 不再提交，避免把一次性生成輸出當成 runtime 資料。
+`make presentation-update` 會讀取非公開來源檔
+`presentation/SCU_RAG_Business_Analysis.pptx`，並更新
+`frontend/public/SCU_RAG_Business_Analysis.pdf`；若環境有
+LibreOffice，會先由 PPTX 刷新 PDF，再產生 WebP 與
+`frontend/public/slides/manifest.json`。沒有 LibreOffice 時會使用既有 PDF。
+前端頁數、標題與檔名全部由 manifest 決定，不需修改 React。
+
+歷史 benchmark 的 raw JSON/Markdown 不再提交，避免把一次性生成輸出當成 runtime 資料。
 
 ## 雲端部署
 

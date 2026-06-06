@@ -1,8 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import "./App.css";
 import AdminPanel from "./AdminPanel";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+const DEFAULT_PRESENTATION = {
+  title: "SCU RAG 商業與技術簡報",
+  slides: [{ src: "/slides/slide_1.webp", title: "Slide 1" }],
+};
 
 const SAMPLE_QUESTIONS = [
   "期末考請假期限是多久？要送去哪裡審核？",
@@ -356,8 +360,11 @@ function App() {
   const [backendStatus, setBackendStatus] = useState("checking"); // checking, online, offline
   const [showLaws, setShowLaws] = useState(false);
   const [showScopes, setShowScopes] = useState(false);
-  const [showPDFModal, setShowPDFModal] = useState(false); // 新增 PDF 彈窗狀態控制
-  const [slideIndex, setSlideIndex] = useState(0); // 新增當前投影片索引狀態
+  const [showPDFModal, setShowPDFModal] = useState(false);
+  const [slideIndex, setSlideIndex] = useState(0);
+  const [slideLoading, setSlideLoading] = useState(true);
+  const [slideLoadError, setSlideLoadError] = useState(false);
+  const [presentation, setPresentation] = useState(DEFAULT_PRESENTATION);
   const [showConfig, setShowConfig] = useState(false); // 新增系統配置面板折疊狀態
   const [geminiKey, setGeminiKey] = useState(sessionStorage.getItem("geminiKey") || "");
   const [rememberGeminiKey, setRememberGeminiKey] = useState(Boolean(sessionStorage.getItem("geminiKey")));
@@ -372,10 +379,29 @@ function App() {
   const inputRef = useRef(null);
   const ragAbortRef = useRef(null);
   const statusCheckRef = useRef(null);
+  const presentationButtonRef = useRef(null);
+  const presentationModalRef = useRef(null);
+  const presentationCloseRef = useRef(null);
   const isCloudMode = !forceLocal && geminiKey.trim();
   const activeEngineName = isCloudMode ? "Gemini 2.5 Flash" : "Gemma 3 (Ollama)";
   const canAskQuestion = backendStatus === "online" && dbStatus !== "empty";
   const visibleQuestionScopes = getVisibleQuestionScopes(loadedFiles);
+  const presentationSlides = presentation.slides?.length ? presentation.slides : DEFAULT_PRESENTATION.slides;
+  const presentationSlideCount = presentationSlides.length;
+  const activePresentationSlide = presentationSlides[slideIndex] || presentationSlides[0];
+  const showPresentationSlide = useCallback((index) => {
+    setSlideLoading(true);
+    setSlideLoadError(false);
+    setSlideIndex(index);
+  }, []);
+  const openPresentation = useCallback(() => {
+    showPresentationSlide(0);
+    setShowPDFModal(true);
+  }, [showPresentationSlide]);
+  const closePresentation = useCallback(() => {
+    setShowPDFModal(false);
+    setSlideIndex(0);
+  }, []);
   const inputHelpText = (() => {
     if (backendStatus !== "online") return "後端尚未連線，請先啟動 FastAPI。";
     if (dbStatus === "empty") return "知識庫尚未載入，請先放入 PDF。";
@@ -389,22 +415,97 @@ function App() {
     return "請輸入關於法規或文檔的問題... (例如：宿舍退宿的退費標準是什麼？)";
   })();
 
-  // 簡報鍵盤事件監聽 (左右方向鍵換頁，Esc 關閉)
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/slides/manifest.json")
+      .then((response) => {
+        if (!response.ok) throw new Error(`Presentation manifest returned ${response.status}`);
+        return response.json();
+      })
+      .then((manifest) => {
+        if (!cancelled && Array.isArray(manifest.slides) && manifest.slides.length > 0) {
+          setPresentation(manifest);
+        }
+      })
+      .catch((error) => {
+        console.warn("Unable to load presentation manifest; using the fallback slide.", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showPDFModal) return undefined;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const presentationTrigger = presentationButtonRef.current;
+    document.body.style.overflow = "hidden";
+    window.requestAnimationFrame(() => presentationCloseRef.current?.focus());
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      presentationTrigger?.focus();
+    };
+  }, [showPDFModal]);
+
+  useEffect(() => {
+    const adjacentSlides = [
+      presentationSlides[slideIndex - 1],
+      presentationSlides[slideIndex + 1],
+    ].filter(Boolean);
+    const preloaders = adjacentSlides.map((slide) => {
+      const image = new Image();
+      image.src = slide.src;
+      return image;
+    });
+
+    return () => {
+      preloaders.forEach((image) => {
+        image.onload = null;
+        image.onerror = null;
+      });
+    };
+  }, [presentationSlides, slideIndex]);
+
+  // 簡報鍵盤事件監聽
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (!showPDFModal) return;
       if (e.key === "ArrowLeft") {
-        setSlideIndex(prev => Math.max(0, prev - 1));
+        showPresentationSlide(Math.max(0, slideIndex - 1));
       } else if (e.key === "ArrowRight") {
-        setSlideIndex(prev => Math.min(8, prev + 1));
+        showPresentationSlide(Math.min(presentationSlideCount - 1, slideIndex + 1));
       } else if (e.key === "Escape") {
-        setShowPDFModal(false);
-        setSlideIndex(0);
+        closePresentation();
+      } else if (e.key === "Tab") {
+        const focusableElements = presentationModalRef.current?.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusableElements?.length) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        if (e.shiftKey && document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        } else if (!e.shiftKey && document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showPDFModal]);
+  }, [
+    closePresentation,
+    showPDFModal,
+    showPresentationSlide,
+    slideIndex,
+    presentationSlideCount,
+  ]);
 
   // 檢查後端 FastAPI 服務狀態與系統健康度
   const checkStatus = async () => {
@@ -656,12 +757,28 @@ function App() {
     void askQuestion(questionButton.dataset.suggestedQuestion || "");
   };
 
+  const desktopOnlyNotice = (
+    <div className="desktop-only-notice" role="status">
+      <div className="desktop-only-card">
+        <strong>此系統目前提供桌面版</strong>
+        <span>請將瀏覽器視窗調整至至少 1200px 寬，或改用桌上型電腦開啟。</span>
+      </div>
+    </div>
+  );
+
   if (showAdmin) {
-    return <AdminPanel apiBaseUrl={API_BASE_URL} onClose={() => setShowAdmin(false)} />;
+    return (
+      <>
+        {desktopOnlyNotice}
+        <AdminPanel apiBaseUrl={API_BASE_URL} onClose={() => setShowAdmin(false)} />
+      </>
+    );
   }
 
   return (
-    <div className="app-container">
+    <>
+      {desktopOnlyNotice}
+      <div className="app-container">
       {/* 頂部導航欄 */}
       <header className="app-header">
         <div className="header-left">
@@ -921,7 +1038,11 @@ function App() {
 
           {/* 側邊欄行動按鈕組 */}
           <div className="sidebar-actions">
-            <button className="view-presentation-btn" onClick={() => setShowPDFModal(true)}>
+            <button
+              ref={presentationButtonRef}
+              className="view-presentation-btn"
+              onClick={openPresentation}
+            >
               🌐 開啟專案簡報
             </button>
             <button className="clear-history-btn" onClick={clearChat} title="清除目前對話紀錄">
@@ -1044,20 +1165,46 @@ function App() {
 
       {/* 專案簡報 PDF 全螢幕手繪風彈窗 (Modal) */}
       {showPDFModal && (
-        <div className="pdf-modal-overlay" onClick={() => { setShowPDFModal(false); setSlideIndex(0); }}>
-          <div className="pdf-modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="pdf-modal-overlay" onClick={closePresentation}>
+          <div
+            ref={presentationModalRef}
+            className="pdf-modal-content"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="presentation-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="pdf-modal-header">
-              <span className="pdf-modal-title">🎓 MIS 期末專案簡報</span>
-              <button className="pdf-modal-close" onClick={() => { setShowPDFModal(false); setSlideIndex(0); }}>
+              <span className="pdf-modal-title" id="presentation-modal-title">
+                🎓 {presentation.title}
+              </span>
+              <button
+                ref={presentationCloseRef}
+                className="pdf-modal-close"
+                onClick={closePresentation}
+              >
                 ❌ 關閉簡報
               </button>
             </div>
             <div className="pdf-modal-body">
               <div className="slide-container">
+                {slideLoading && !slideLoadError && (
+                  <div className="slide-status" role="status">投影片載入中...</div>
+                )}
+                {slideLoadError && (
+                  <div className="slide-status slide-error" role="alert">
+                    投影片載入失敗，請重新整理頁面後再試。
+                  </div>
+                )}
                 <img 
-                  src={`/slides/slide_${slideIndex + 1}.webp`}
-                  alt={`Slide ${slideIndex + 1}`}
-                  className="slide-image"
+                  src={activePresentationSlide.src}
+                  alt={activePresentationSlide.title || `Slide ${slideIndex + 1}`}
+                  className={`slide-image ${slideLoading || slideLoadError ? "is-hidden" : ""}`}
+                  onLoad={() => setSlideLoading(false)}
+                  onError={() => {
+                    setSlideLoading(false);
+                    setSlideLoadError(true);
+                  }}
                 />
               </div>
               
@@ -1065,27 +1212,30 @@ function App() {
               <div className="slide-controls">
                 <button 
                   className="slide-btn" 
-                  onClick={() => setSlideIndex(prev => Math.max(0, prev - 1))}
+                  onClick={() => showPresentationSlide(Math.max(0, slideIndex - 1))}
                   disabled={slideIndex === 0}
                 >
                   ◀ 上一頁
                 </button>
                 <div className="slide-page-info">
-                  <span className="slide-page-text">第 {slideIndex + 1} / 9 頁</span>
+                  <span className="slide-page-text">第 {slideIndex + 1} / {presentationSlideCount} 頁</span>
                   <div className="slide-dots">
-                    {Array.from({ length: 9 }).map((_, idx) => (
-                      <span 
-                        key={idx} 
+                    {presentationSlides.map((slide, idx) => (
+                      <button
+                        type="button"
+                        key={slide.src}
                         className={`slide-dot ${idx === slideIndex ? "active" : ""}`}
-                        onClick={() => setSlideIndex(idx)}
+                        onClick={() => showPresentationSlide(idx)}
+                        aria-label={`前往第 ${idx + 1} 頁：${slide.title || ""}`}
+                        aria-current={idx === slideIndex ? "page" : undefined}
                       />
                     ))}
                   </div>
                 </div>
                 <button 
                   className="slide-btn" 
-                  onClick={() => setSlideIndex(prev => Math.min(8, prev + 1))}
-                  disabled={slideIndex === 8}
+                  onClick={() => showPresentationSlide(Math.min(presentationSlideCount - 1, slideIndex + 1))}
+                  disabled={slideIndex === presentationSlideCount - 1}
                 >
                   下一頁 ▶
                 </button>
@@ -1094,7 +1244,8 @@ function App() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

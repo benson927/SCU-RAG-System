@@ -3,7 +3,7 @@ COMPOSE ?= env PATH="$(DOCKER_HELPER_DIR)$(PATH)" docker compose
 INTEGRATION_PROJECT ?= scu-rag-integration
 INTEGRATION_PORTS := POSTGRES_PORT=55432 MINIO_API_PORT=59000 MINIO_CONSOLE_PORT=59001 BACKEND_PORT=58000
 
-.PHONY: compose-up compose-down compose-logs compose-status import-dry-run import-publish test test-unit test-integration test-smoke integration-test compose-reset
+.PHONY: compose-up compose-down compose-logs compose-status import-dry-run import-publish presentation-update test test-unit test-integration test-smoke integration-test compose-reset
 
 compose-up:
 	$(COMPOSE) --env-file .env.compose up --build -d
@@ -22,6 +22,9 @@ import-dry-run:
 
 import-publish:
 	$(COMPOSE) --env-file .env.compose exec backend python -m backend.scripts.import_legacy_data --publish
+
+presentation-update:
+	python3 scripts/update_presentation.py
 
 test-unit:
 	python3 -m unittest discover -s tests/unit -v
