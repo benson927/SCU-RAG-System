@@ -3,6 +3,7 @@ import time
 import unittest
 import uuid
 import json
+import tempfile
 
 
 RUN_INTEGRATION = os.getenv("RUN_COMPOSE_INTEGRATION") == "1"
@@ -81,6 +82,11 @@ class TestComposeIntegration(unittest.TestCase):
         self.assertIsNotNone(final_job)
         self.assertEqual(final_job["status"], "succeeded", final_job.get("error_message"))
         return final_job
+
+    def test_persistent_directories_are_writable_by_backend(self):
+        for directory in ("/app/chroma_db", "/app/data/managed_documents"):
+            with tempfile.NamedTemporaryFile(dir=directory):
+                pass
 
     def test_postgres_minio_and_document_publish_flow(self):
         with self.db.cursor() as cursor:
