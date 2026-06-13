@@ -13,6 +13,6 @@ google-generativeai==0.8.6
 sqlalchemy==2.0.50
 alembic==1.18.4
 psycopg[binary]==3.3.4
-boto3==1.43.23
+boto3==1.43.29
 python-multipart==0.0.32
 httpx==0.28.1
